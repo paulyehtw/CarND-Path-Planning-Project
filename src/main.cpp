@@ -1,19 +1,20 @@
-#include <uWS/uWS.h>
-#include <fstream>
-#include <iostream>
-#include <string>
-#include <vector>
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "helpers.h"
 #include "json.hpp"
+#include "uWebSockets/src/uWS.h"
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
 
 // for convenience
 using nlohmann::json;
 using std::string;
 using std::vector;
 
-int main() {
+int main()
+{
   uWS::Hub h;
 
   // Load up map values for waypoint's x,y,s and d normalized normal vectors
@@ -31,7 +32,8 @@ int main() {
   std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
 
   string line;
-  while (getline(in_map_, line)) {
+  while (getline(in_map_, line))
+  {
     std::istringstream iss(line);
     double x;
     double y;
@@ -50,25 +52,27 @@ int main() {
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
-              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-               uWS::OpCode opCode) {
+  h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
+               &map_waypoints_dx, &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                                                     uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
-    if (length && length > 2 && data[0] == '4' && data[1] == '2') {
+    if (length && length > 2 && data[0] == '4' && data[1] == '2')
+    {
 
       auto s = hasData(data);
 
-      if (s != "") {
+      if (s != "")
+      {
         auto j = json::parse(s);
-        
+
         string event = j[0].get<string>();
-        
-        if (event == "telemetry") {
+
+        if (event == "telemetry")
+        {
           // j[1] is the data JSON object
-          
+
           // Main car's localization Data
           double car_x = j[1]["x"];
           double car_y = j[1]["y"];
@@ -80,11 +84,11 @@ int main() {
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
-          // Previous path's end s and d values 
+          // Previous path's end s and d values
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
 
-          // Sensor Fusion Data, a list of all other cars on the same side 
+          // Sensor Fusion Data, a list of all other cars on the same side
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
 
@@ -97,21 +101,28 @@ int main() {
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
-
+          double dist_inc = 0.5;
+          for (int i = 0; i < 50; ++i)
+          {
+            next_x_vals.push_back(car_x + (dist_inc * i) * cos(deg2rad(car_yaw)));
+            next_y_vals.push_back(car_y + (dist_inc * i) * sin(deg2rad(car_yaw)));
+          }
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
-          auto msg = "42[\"control\","+ msgJson.dump()+"]";
+          auto msg = "42[\"control\"," + msgJson.dump() + "]";
 
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-        }  // end "telemetry" if
-      } else {
+        } // end "telemetry" if
+      }
+      else
+      {
         // Manual driving
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
-    }  // end websocket if
+    } // end websocket if
   }); // end h.onMessage
 
   h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
@@ -125,12 +136,15 @@ int main() {
   });
 
   int port = 4567;
-  if (h.listen(port)) {
+  if (h.listen(port))
+  {
     std::cout << "Listening to port " << port << std::endl;
-  } else {
+  }
+  else
+  {
     std::cerr << "Failed to listen to port" << std::endl;
     return -1;
   }
-  
+
   h.run();
 }
