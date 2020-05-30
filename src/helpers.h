@@ -1,6 +1,7 @@
 #ifndef HELPERS_H
 #define HELPERS_H
 
+#include "spline.h"
 #include <math.h>
 #include <string>
 #include <vector>
@@ -150,6 +151,21 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
   double y = seg_y + d * sin(perp_heading);
 
   return {x, y};
+}
+
+std::vector<double> interpolate(vector<double> pts_x,
+                                vector<double> pts_y,
+                                double interval,
+                                int num_points)
+{
+  tk::spline s;
+  s.set_points(pts_x, pts_y);
+  vector<double> interpolated;
+  for (int i = 0; i < num_points; i++)
+  {
+    interpolated.push_back(s(pts_x[0] + i * interval));
+  }
+  return interpolated;
 }
 
 #endif // HELPERS_H

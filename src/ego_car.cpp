@@ -6,7 +6,7 @@ void EgoCar::planPath(const Car &ego_car_state,
                       std::vector<double> &next_y_vals)
 {
     Waypoints closest_waypoints = path_planner.detectClosestWaypoints(ego_car_state, map);
-    // Waypoints interpolated_waypoints = path_planner.interpolateWaypoints(closest_waypoints);
-    next_x_vals = closest_waypoints.waypoints_x;
-    next_y_vals = closest_waypoints.waypoints_y;
+    Waypoints interpolated_waypoints = path_planner.interpolateWaypoints(closest_waypoints);
+    next_x_vals = interpolated_waypoints.x;
+    next_y_vals = interpolated_waypoints.y;
 }

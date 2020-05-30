@@ -4,12 +4,12 @@
 Waypoints PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
                                               const Waypoints &map)
 {
-    int num_waypoints = map.waypoints_x.size();
+    int num_waypoints = map.x.size();
     int next_waypoint_index = NextWaypoint(ego_car_state.x,
                                            ego_car_state.y,
                                            ego_car_state.yaw,
-                                           map.waypoints_x,
-                                           map.waypoints_y);
+                                           map.x,
+                                           map.y);
 
     Waypoints closest_waypoints = Waypoints();
 
@@ -26,19 +26,31 @@ Waypoints PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
         {
             continue;
         }
-        closest_waypoints.waypoints_x.push_back(map.waypoints_x[idx]);
-        closest_waypoints.waypoints_y.push_back(map.waypoints_y[idx]);
-        closest_waypoints.waypoints_s.push_back(map.waypoints_s[idx]);
-        closest_waypoints.waypoints_dx.push_back(map.waypoints_dx[idx]);
-        closest_waypoints.waypoints_dy.push_back(map.waypoints_dy[idx]);
+        closest_waypoints.x.push_back(map.x[idx]);
+        closest_waypoints.y.push_back(map.y[idx]);
+        closest_waypoints.s.push_back(map.s[idx]);
+        closest_waypoints.dx.push_back(map.dx[idx]);
+        closest_waypoints.dy.push_back(map.dy[idx]);
     }
     return closest_waypoints;
 }
 
 Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
 {
-    // std::vector<std::vector<double>> interpolated_waypoints{};
-    // double s_length = (waypoints[2][waypoints.size() - 1] - waypoints[2][0]); // use s to calcualte interpolation points
-    // int num_interpolation_points = s_length / PlannerParameter::kInterpolatedWaypointsInterval;
-    // return interpolated_waypoints;
+    Waypoints interpolated_waypoints{};
+    float interval = PlannerParameter::kInterpolatedWaypointsInterval;
+    double s_length = (waypoints.s[waypoints.s.size() - 1] - waypoints.s[0]); // use s to calcualte interpolation points
+    int num_interpolation_points = s_length / interval;
+    // Interpolate s
+    interpolated_waypoints.s.push_back(waypoints.s[0]);
+    for (int i = 1; i < num_interpolation_points; i++)
+    {
+        interpolated_waypoints.s.push_back(waypoints.s[i - 1] + interval);
+    }
+    interpolated_waypoints.x = interpolate(waypoints.s, waypoints.x, interval, num_interpolation_points);
+    interpolated_waypoints.y = interpolate(waypoints.s, waypoints.y, interval, num_interpolation_points);
+    interpolated_waypoints.dx = interpolate(waypoints.s, waypoints.dx, interval, num_interpolation_points);
+    interpolated_waypoints.dy = interpolate(waypoints.s, waypoints.dy, interval, num_interpolation_points);
+
+    return interpolated_waypoints;
 }
