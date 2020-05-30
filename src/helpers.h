@@ -168,4 +168,24 @@ std::vector<double> interpolate(vector<double> pts_x,
   return interpolated;
 }
 
+vector<double> differentiate(vector<double> coeffs)
+{
+  vector<double> diff_coeffs;
+  for (int i = 1; i < coeffs.size(); i++)
+  {
+    diff_coeffs.push_back(i * coeffs[i]);
+  }
+  return diff_coeffs;
+}
+
+double function(vector<double> coeffs, double time)
+{
+  double eval = 0;
+  for (int i = 0; i < coeffs.size(); i++)
+  {
+    eval += coeffs[i] * pow(time, i);
+  }
+  return eval;
+}
+
 #endif // HELPERS_H

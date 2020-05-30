@@ -25,6 +25,13 @@ struct Waypoints
         dx = waypoints_dx;
         dy = waypoints_dy;
     };
+
+    Waypoints(const std::vector<double> &waypoints_x,
+              const std::vector<double> &waypoints_y)
+    {
+        x = waypoints_x;
+        y = waypoints_y;
+    };
 };
 
 #endif // WAYPOINTS_H
