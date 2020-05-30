@@ -1,39 +1,44 @@
 #include "path_planner.h"
 #include "helpers.h"
 
-std::vector<std::vector<double>> PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
-                                                                     const std::vector<std::vector<double>> &map)
+Waypoints PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
+                                              const Waypoints &map)
 {
-    int num_waypoints = map[0].size();
+    int num_waypoints = map.waypoints_x.size();
     int next_waypoint_index = NextWaypoint(ego_car_state.x,
                                            ego_car_state.y,
                                            ego_car_state.yaw,
-                                           map[0] /* map_waypoints_x */,
-                                           map[1] /* map_waypoints_y */);
+                                           map.waypoints_x,
+                                           map.waypoints_y);
 
-    std::vector<std::vector<double>> closest_waypoints{};
+    Waypoints closest_waypoints = Waypoints();
 
-    // Loop over x, y, s, dx, dy
-    for (int map_id = 0; map_id < map.size(); map_id++)
+    // Add closest waypoints information
+    for (int i = -PlannerParameter::kNumWaypointsBehind; i < PlannerParameter::kNumWaypointsAhead; i++)
     {
-        // Add closest waypoints information
-        std::vector<double> waypoints{};
-        for (int i = -param.kNumWaypointsBehind; i < param.kNumWaypointsAhead; i++)
+        int idx = (next_waypoint_index + i) % num_waypoints;
+        // Out of bound check
+        if (idx < 0)
         {
-            int idx = (next_waypoint_index + i) % num_waypoints;
-            // Out of bound check
-            if (idx < 0)
-            {
-                continue;
-            }
-            else if (idx > (num_waypoints - 1))
-            {
-                continue;
-            }
-            waypoints.push_back(map[map_id][idx]);
+            continue;
         }
-        closest_waypoints.push_back(waypoints);
+        else if (idx > (num_waypoints - 1))
+        {
+            continue;
+        }
+        closest_waypoints.waypoints_x.push_back(map.waypoints_x[idx]);
+        closest_waypoints.waypoints_y.push_back(map.waypoints_y[idx]);
+        closest_waypoints.waypoints_s.push_back(map.waypoints_s[idx]);
+        closest_waypoints.waypoints_dx.push_back(map.waypoints_dx[idx]);
+        closest_waypoints.waypoints_dy.push_back(map.waypoints_dy[idx]);
     }
-
     return closest_waypoints;
+}
+
+Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
+{
+    // std::vector<std::vector<double>> interpolated_waypoints{};
+    // double s_length = (waypoints[2][waypoints.size() - 1] - waypoints[2][0]); // use s to calcualte interpolation points
+    // int num_interpolation_points = s_length / PlannerParameter::kInterpolatedWaypointsInterval;
+    // return interpolated_waypoints;
 }

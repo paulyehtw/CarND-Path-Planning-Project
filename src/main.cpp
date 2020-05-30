@@ -4,6 +4,7 @@
 #include "ego_car.h"
 #include "json.hpp"
 #include "uWebSockets/src/uWS.h"
+#include "waypoints.h"
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -45,7 +46,7 @@ int main()
   vector<double> map_waypoints_dy;
 
   // Waypoint map to read from
-  string map_file_ = "../data/highway_map.csv";
+  string map_file_ = "/home/paul/Desktop/CarND/CarND-Path-Planning-Project/data/highway_map.csv";
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
 
@@ -124,11 +125,11 @@ int main()
 
           Car ego_car_state = Car(car_x, car_y, car_s, car_d, car_yaw, car_speed);
 
-          vector<vector<double>> map{map_waypoints_x,
-                                     map_waypoints_y,
-                                     map_waypoints_s,
-                                     map_waypoints_dx,
-                                     map_waypoints_dy};
+          Waypoints map = Waypoints(map_waypoints_x,
+                                    map_waypoints_y,
+                                    map_waypoints_s,
+                                    map_waypoints_dx,
+                                    map_waypoints_dy);
 
           ego_car->planPath(ego_car_state, map, next_x_vals, next_y_vals);
 
