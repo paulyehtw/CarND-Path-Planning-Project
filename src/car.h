@@ -1,9 +1,6 @@
 #ifndef CAR_H
 #define CAR_H
 
-#include "path_planner.h"
-#include <vector>
-
 struct Car
 {
     double x;
@@ -12,18 +9,16 @@ struct Car
     double d;
     double v;
     double yaw;
-};
-
-class EgoCar
-{
-    Car ego_car;
-    std::vector<Car> traffic;
-    PathPlanner path_planner;
-
-public:
-    EgoCar(){};
-    ~EgoCar();
-    void planPath(std::vector<double> &next_x_vals, std::vector<double> &next_y_vals);
+    Car(){};
+    Car(double car_x, double car_y, double car_s, double car_d, double car_v, double car_yaw)
+    {
+        x = car_x;
+        y = car_y;
+        s = car_s;
+        d = car_d;
+        v = car_v;
+        yaw = car_yaw;
+    };
 };
 
 #endif // CAR_H
