@@ -1,5 +1,6 @@
 #include "path_planner.h"
 #include "helpers.h"
+#include <iostream>
 
 Waypoints PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
                                               const Waypoints &map)
@@ -145,4 +146,36 @@ void PathPlanner::updateCoefficients(Car &ego_car_state,
     d = pos_d;     // d position
     d_d = d_dot;   // d dot - velocity in d
     d_dd = d_ddot; // d dot-dot - acceleration in d
+}
+
+void PathPlanner::detectTraffic(const std::vector<Car> &traffic, const Car &ego_car_state)
+{
+    bool car_to_left = false, car_to_right = false, car_just_ahead = false;
+    for (Car car : traffic)
+    {
+        double s_diff = fabs(car.s - ego_car_state.s);
+        if (s_diff < PlannerParameter::kMinLeadingDistance)
+        {
+            double d_diff = car.d - ego_car_state.d;
+            if (d_diff > 2 && d_diff < 6)
+            {
+                car_to_right = true;
+            }
+            else if (d_diff < -2 && d_diff > -6)
+            {
+                car_to_left = true;
+            }
+            else if (d_diff > -2 && d_diff < 2)
+            {
+                car_just_ahead = true;
+            }
+        }
+    }
+
+    if (car_to_right)
+        std::cout << "CAR ON THE RIGHT!!!" << std::endl;
+    if (car_to_left)
+        std::cout << "CAR ON THE LEFT!!!" << std::endl;
+    if (car_just_ahead)
+        std::cout << "CAR JUST AHEAD!!!" << std::endl;
 }

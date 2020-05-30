@@ -110,7 +110,7 @@ int main()
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
-          std::cout << "previous_path size :" << previous_path_x.size() << std::endl;
+          // std::cout << "previous_path size :" << previous_path_x.size() << std::endl;
           // Previous path's end s and d values
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
@@ -137,12 +137,21 @@ int main()
                                     map_waypoints_dx,
                                     map_waypoints_dy);
 
-          ego_car->planPath(ego_car_state, map, previous_path, next_x_vals, next_y_vals);
+          ego_car->traffic.clear();
+          for (auto sf : sensor_fusion)
+          {
+            double car_v = sqrt(pow((double)sf[3], 2) + pow((double)sf[4], 2));
+            Car car = Car(0.0F, 0.0F, sf[5], sf[6], car_v, 0.0F);
+            ego_car->traffic.push_back(car);
+          }
+          // std::cout << "traffic size " << ego_car->traffic.size() << std::endl; // alway 12
+
+          ego_car->planPath(ego_car_state, map, ego_car->traffic, previous_path, next_x_vals, next_y_vals);
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
-          std::cout << "next_path size :" << next_x_vals.size() << std::endl;
+          // std::cout << "next_path size :" << next_x_vals.size() << std::endl;
 
           auto msg = "42[\"control\"," + msgJson.dump() + "]";
 

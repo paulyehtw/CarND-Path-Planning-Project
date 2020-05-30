@@ -9,14 +9,15 @@
 class EgoCar
 {
     Car ego_car;
-    std::vector<Car> traffic;
     PathPlanner path_planner;
 
 public:
     EgoCar(){};
     ~EgoCar();
+    std::vector<Car> traffic;
     void planPath(Car &ego_car_state,
                   const Waypoints &map,
+                  const std::vector<Car> &traffic,
                   const Waypoints &previous_path,
                   std::vector<double> &next_x_vals,
                   std::vector<double> &next_y_vals);
