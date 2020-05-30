@@ -198,3 +198,16 @@ void PathPlanner::predictTraffic(const std::vector<Car> &traffic, const int &sub
         traffic_predictions[i] = prediction;
     }
 }
+
+void PathPlanner::updateStates(const bool &car_to_left, const bool &car_to_right)
+{
+    available_states = {"KL"};
+    if (d > 4 && !car_to_left)
+    {
+        available_states.push_back("LCL");
+    }
+    if (d < 8 && !car_to_right)
+    {
+        available_states.push_back("LCR");
+    }
+}

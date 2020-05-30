@@ -31,6 +31,7 @@ class PathPlanner
     double d_dd;
     std::vector<double> s_traj_coeffs;
     std::vector<double> d_traj_coeffs;
+    std::vector<std::string> available_states;
     std::map<int, std::vector<std::pair<double, double>>> traffic_predictions;
 
 public:
@@ -45,6 +46,8 @@ public:
     void detectTraffic(const std::vector<Car> &traffic, const Car &ego_car_state);
 
     void predictTraffic(const std::vector<Car> &traffic, const int &subpath_size);
+
+    void updateStates(const bool &car_to_left, const bool &car_to_right);
 
     PathPlanner(){};
     ~PathPlanner();
