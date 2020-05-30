@@ -4,6 +4,7 @@
 #include "car.h"
 #include "waypoints.h"
 #include <algorithm>
+#include <map>
 #include <stdint.h>
 #include <vector>
 
@@ -30,17 +31,20 @@ class PathPlanner
     double d_dd;
     std::vector<double> s_traj_coeffs;
     std::vector<double> d_traj_coeffs;
+    std::map<int, std::vector<std::pair<double, double>>> traffic_predictions;
 
 public:
     Waypoints detectClosestWaypoints(const Car &ego_car_state,
                                      const Waypoints &map);
     Waypoints interpolateWaypoints(const Waypoints &waypoints);
 
-    void updateCoefficients(Car &ego_car_state,
-                            const Waypoints &interpolated_waypoints,
-                            const Waypoints &previous_path);
+    int updateCoefficients(Car &ego_car_state,
+                           const Waypoints &interpolated_waypoints,
+                           const Waypoints &previous_path);
 
     void detectTraffic(const std::vector<Car> &traffic, const Car &ego_car_state);
+
+    void predictTraffic(const std::vector<Car> &traffic, const int &subpath_size);
 
     PathPlanner(){};
     ~PathPlanner();

@@ -58,9 +58,9 @@ Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
     return interpolated_waypoints;
 }
 
-void PathPlanner::updateCoefficients(Car &ego_car_state,
-                                     const Waypoints &interpolated_waypoints,
-                                     const Waypoints &previous_path)
+int PathPlanner::updateCoefficients(Car &ego_car_state,
+                                    const Waypoints &interpolated_waypoints,
+                                    const Waypoints &previous_path)
 {
     double pos_s, s_dot, s_ddot;
     double pos_d, d_dot, d_ddot;
@@ -146,6 +146,8 @@ void PathPlanner::updateCoefficients(Car &ego_car_state,
     d = pos_d;     // d position
     d_d = d_dot;   // d dot - velocity in d
     d_dd = d_ddot; // d dot-dot - acceleration in d
+
+    return subpath_size;
 }
 
 void PathPlanner::detectTraffic(const std::vector<Car> &traffic, const Car &ego_car_state)
@@ -178,4 +180,21 @@ void PathPlanner::detectTraffic(const std::vector<Car> &traffic, const Car &ego_
         std::cout << "CAR ON THE LEFT!!!" << std::endl;
     if (car_just_ahead)
         std::cout << "CAR JUST AHEAD!!!" << std::endl;
+}
+
+void PathPlanner::predictTraffic(const std::vector<Car> &traffic, const int &subpath_size)
+{
+    double traj_start_time = subpath_size * PlannerParameter::dt;
+    double duration = PlannerParameter::kNumSamples * PlannerParameter::kSampleDt - subpath_size * PlannerParameter::dt;
+    for (int i = 0; i < traffic.size(); ++i)
+    {
+        std::vector<std::pair<double, double>> prediction{};
+        for (int j = 0; j < PlannerParameter::kNumSamples; j++)
+        {
+            double t = traj_start_time + (j * duration / PlannerParameter::kNumSamples);
+            double s_pred = s + s_d * t;
+            prediction.push_back(std::make_pair(s_pred, d));
+        }
+        traffic_predictions[i] = prediction;
+    }
 }
