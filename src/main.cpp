@@ -55,9 +55,12 @@ int main()
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
-               &map_waypoints_dx, &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-                                                     uWS::OpCode opCode) {
+  h.onMessage([ego_car,
+               &map_waypoints_x,
+               &map_waypoints_y,
+               &map_waypoints_s,
+               &map_waypoints_dx,
+               &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -100,16 +103,7 @@ int main()
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
-          /**
-           * TODO: define a path made up of (x,y) points that the car will visit
-           *   sequentially every .02 seconds
-           */
-          double dist_inc = 0.5;
-          for (int i = 0; i < 50; ++i)
-          {
-            next_x_vals.push_back(car_x + (dist_inc * i) * cos(deg2rad(car_yaw)));
-            next_y_vals.push_back(car_y + (dist_inc * i) * sin(deg2rad(car_yaw)));
-          }
+          ego_car->planPath(next_x_vals, next_y_vals);
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;

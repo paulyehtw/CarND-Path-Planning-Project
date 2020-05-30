@@ -19,6 +19,11 @@ class EgoCar
     Car ego_car;
     std::vector<Car> traffic;
     PathPlanner path_planner;
+
+public:
+    EgoCar(){};
+    ~EgoCar();
+    void planPath(std::vector<double> &next_x_vals, std::vector<double> &next_y_vals);
 };
 
 #endif // CAR_H
