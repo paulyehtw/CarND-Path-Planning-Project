@@ -1,18 +1,24 @@
 #ifndef CAR_H
 #define CAR_H
 
-class Car
-{
-    ~Car();
-    Car();
+#include "path_planner.h"
+#include <vector>
 
-public:
+struct Car
+{
     double x;
     double y;
     double s;
     double d;
     double v;
     double yaw;
+};
+
+class EgoCar
+{
+    Car ego_car;
+    std::vector<Car> traffic;
+    PathPlanner path_planner;
 };
 
 #endif // CAR_H

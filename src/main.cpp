@@ -1,5 +1,6 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
+#include "car.h"
 #include "helpers.h"
 #include "json.hpp"
 #include "uWebSockets/src/uWS.h"
@@ -28,6 +29,8 @@ int main()
   string map_file_ = "../data/highway_map.csv";
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
+
+  EgoCar *ego_car = new EgoCar();
 
   std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
 

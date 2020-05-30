@@ -3,8 +3,6 @@
 
 class PathPlanner
 {
-    ~PathPlanner();
-    PathPlanner();
 };
 
 #endif // PATH_PLANNER_H
