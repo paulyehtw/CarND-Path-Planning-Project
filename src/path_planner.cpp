@@ -48,7 +48,7 @@ Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
     interpolated_waypoints.s.push_back(waypoints.s[0]);
     for (int i = 1; i < num_interpolation_points; i++)
     {
-        interpolated_waypoints.s.push_back(waypoints.s[i - 1] + interval);
+        interpolated_waypoints.s.push_back(waypoints.s[0] + i * interval);
     }
     // Interpolate  the rest
     interpolated_waypoints.x = interpolate(waypoints.s, waypoints.x, interval, num_interpolation_points);
@@ -190,10 +190,11 @@ void PathPlanner::predictTraffic(const std::vector<Car> &traffic, const int &sub
     for (int i = 0; i < traffic.size(); ++i)
     {
         std::vector<std::vector<double>> prediction{};
+        Car car = traffic[i];
         for (int j = 0; j < PlannerParameter::kNumSamples; j++)
         {
             double t = traj_start_time + (j * duration / PlannerParameter::kNumSamples);
-            double s_pred = s + s_d * t;
+            double s_pred = car.s + car.v * t;
             vector<double> s_and_d = {s_pred, d};
             prediction.push_back(s_and_d);
         }
