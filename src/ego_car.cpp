@@ -10,8 +10,9 @@ void EgoCar::planPath(Car &ego_car_state,
     Waypoints closest_waypoints = path_planner.detectClosestWaypoints(ego_car_state, map);
     Waypoints interpolated_waypoints = path_planner.interpolateWaypoints(closest_waypoints);
     int subpath_size = path_planner.updateCoefficients(ego_car_state, interpolated_waypoints, previous_path);
-    path_planner.detectTraffic(traffic, ego_car_state);
     path_planner.predictTraffic(traffic, subpath_size);
+    path_planner.updateStates();
+    path_planner.generateTarget(traffic, ego_car_state, subpath_size);
     next_x_vals = interpolated_waypoints.x;
     next_y_vals = interpolated_waypoints.y;
 }
