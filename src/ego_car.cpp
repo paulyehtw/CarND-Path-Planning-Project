@@ -12,7 +12,6 @@ void EgoCar::planPath(Car &ego_car_state,
     int subpath_size = path_planner.updateCoefficients(ego_car_state, interpolated_waypoints, previous_path);
     path_planner.predictTraffic(traffic, subpath_size);
     path_planner.updateStates();
-    path_planner.generateTarget(traffic, ego_car_state, subpath_size);
-    next_x_vals = interpolated_waypoints.x;
-    next_y_vals = interpolated_waypoints.y;
+    vector<vector<double>> target = path_planner.generateTarget(traffic, ego_car_state, subpath_size);
+    path_planner.generateNewPath(target, interpolated_waypoints, previous_path, subpath_size, next_x_vals, next_y_vals);
 }

@@ -155,9 +155,9 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
 }
 
 vector<double> interpolate(vector<double> pts_x,
-                                vector<double> pts_y,
-                                double interval,
-                                int num_points)
+                           vector<double> pts_y,
+                           double interval,
+                           int num_points)
 {
   tk::spline s;
   s.set_points(pts_x, pts_y);
@@ -165,6 +165,23 @@ vector<double> interpolate(vector<double> pts_x,
   for (int i = 0; i < num_points; i++)
   {
     interpolated.push_back(s(pts_x[0] + i * interval));
+  }
+  return interpolated;
+}
+
+vector<double> interpolate(vector<double> pts_x,
+                           vector<double> pts_y,
+                           vector<double> eval_at_x)
+{
+  // uses the spline library to interpolate points connecting a series of x and y values
+  // output is spline evaluated at each eval_at_x point
+
+  tk::spline s;
+  s.set_points(pts_x, pts_y); // currently it is required that X is already sorted
+  vector<double> interpolated;
+  for (double x : eval_at_x)
+  {
+    interpolated.push_back(s(x));
   }
   return interpolated;
 }
@@ -191,65 +208,77 @@ double function(vector<double> coeffs, double time)
 
 namespace CostCalculatorHelper
 {
-  double logistic(double x){
-  // A function that returns a value between 0 and 1 for x in the range[0, infinity] and - 1 to 1 for x in 
-  // the range[-infinity, infinity]. Useful for cost functions.
-  return 2.0 / (1 + exp(-x)) - 1.0;
-}
-
-  double nearest_approach(vector<double> s_traj, vector<double> d_traj, vector<vector<double>> prediction) {
-  double closest = 999999;
-  for (int i = 0; i < PlannerParameter::kNumSamples; i++) {
-    double current_dist = sqrt(pow(s_traj[i] - prediction[i][0], 2) + pow(d_traj[i] - prediction[i][1], 2));
-    if (current_dist < closest) {
-      closest = current_dist;
-    }
-  }
-  return closest;
-}
-
-  double nearest_approach_to_any_vehicle(vector<double> s_traj, vector<double> d_traj, std::map<int,vector<vector<double>>> predictions) 
+  double logistic(double x)
   {
-  // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
-  double closest = 999999;
-  for (auto prediction : predictions) {
-    double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
-    if (current_dist < closest) {
-      closest = current_dist;
-    }
+    // A function that returns a value between 0 and 1 for x in the range[0, infinity] and - 1 to 1 for x in
+    // the range[-infinity, infinity]. Useful for cost functions.
+    return 2.0 / (1 + exp(-x)) - 1.0;
   }
-  return closest;
-}
 
-double nearest_approach_to_any_vehicle_in_lane(vector<double> s_traj, vector<double> d_traj, std::map<int,vector<vector<double>>> predictions) {
-  // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
-  double closest = 999999;
-  for (auto prediction : predictions) {
-    double my_final_d = d_traj[d_traj.size() - 1];
-    int my_lane = my_final_d / 4;
-    vector<vector<double>> pred_traj = prediction.second;
-    double pred_final_d = pred_traj[pred_traj.size() - 1][1];
-    int pred_lane = pred_final_d / 4;
-    if (my_lane == pred_lane) {
-      double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
-      if (current_dist < closest && current_dist < 120) {
+  double nearest_approach(vector<double> s_traj, vector<double> d_traj, vector<vector<double>> prediction)
+  {
+    double closest = 999999;
+    for (int i = 0; i < PlannerParameter::kNumSamples; i++)
+    {
+      double current_dist = sqrt(pow(s_traj[i] - prediction[i][0], 2) + pow(d_traj[i] - prediction[i][1], 2));
+      if (current_dist < closest)
+      {
         closest = current_dist;
       }
     }
+    return closest;
   }
-  return closest;
-}
 
-vector<double> velocities_for_trajectory(vector<double> traj) {
-  // given a trajectory (a vector of positions), return the average velocity between each pair as a vector
-  // also can be used to find accelerations from velocities, jerks from accelerations, etc.
-  // (i.e. discrete derivatives)
-  vector<double> velocities;
-  for (int i = 1; i < traj.size(); i++) {
-    velocities.push_back((traj[i] - traj[i-1]) / PlannerParameter::kSampleDt);
+  double nearest_approach_to_any_vehicle(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  {
+    // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
+    double closest = 999999;
+    for (auto prediction : predictions)
+    {
+      double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
+      if (current_dist < closest)
+      {
+        closest = current_dist;
+      }
+    }
+    return closest;
   }
-  return velocities;
-}
+
+  double nearest_approach_to_any_vehicle_in_lane(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  {
+    // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
+    double closest = 999999;
+    for (auto prediction : predictions)
+    {
+      double my_final_d = d_traj[d_traj.size() - 1];
+      int my_lane = my_final_d / 4;
+      vector<vector<double>> pred_traj = prediction.second;
+      double pred_final_d = pred_traj[pred_traj.size() - 1][1];
+      int pred_lane = pred_final_d / 4;
+      if (my_lane == pred_lane)
+      {
+        double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
+        if (current_dist < closest && current_dist < 120)
+        {
+          closest = current_dist;
+        }
+      }
+    }
+    return closest;
+  }
+
+  vector<double> velocities_for_trajectory(vector<double> traj)
+  {
+    // given a trajectory (a vector of positions), return the average velocity between each pair as a vector
+    // also can be used to find accelerations from velocities, jerks from accelerations, etc.
+    // (i.e. discrete derivatives)
+    vector<double> velocities;
+    for (int i = 1; i < traj.size(); i++)
+    {
+      velocities.push_back((traj[i] - traj[i - 1]) / PlannerParameter::kSampleDt);
+    }
+    return velocities;
+  }
 
   double collisionCost(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
   {
@@ -296,5 +325,5 @@ vector<double> velocities_for_trajectory(vector<double> traj) {
     return logistic(pow(end_d - 6, 2));
   }
 
-} // namespace cost_calculator
+} // namespace CostCalculatorHelper
 #endif // HELPERS_H

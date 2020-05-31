@@ -9,8 +9,10 @@
 #include <stdint.h>
 #include <vector>
 
-#define VEHICLE_RADIUS 1.25              // meters
-#define SPEED_LIMIT 21.5 // m/s
+using std::vector;
+
+#define VEHICLE_RADIUS 1.25 // meters
+#define SPEED_LIMIT 21.5    // m/s
 #define VELOCITY_INCREMENT_LIMIT 0.125
 
 // cost function weights
@@ -69,17 +71,24 @@ struct TrafficStates
 
 class PathPlanner
 {
+    // Cartesian coordinates
+    double x;
+    double y;
+    double yaw;
+
+    // Frenet coordinates
     double s;
     double s_d;
     double s_dd;
     double d;
     double d_d;
     double d_dd;
-    std::vector<double> s_traj_coeffs;
-    std::vector<double> d_traj_coeffs;
-    std::vector<std::string> available_states;
+    vector<double> s_traj_coeffs;
+    vector<double> d_traj_coeffs;
+
+    vector<std::string> available_states;
     TrafficStates traffic_states;
-    std::map<int, std::vector<std::vector<double>>> traffic_predictions;
+    std::map<int, vector<vector<double>>> traffic_predictions;
 
 public:
     Waypoints detectClosestWaypoints(const Car &ego_car_state,
@@ -90,28 +99,35 @@ public:
                            const Waypoints &interpolated_waypoints,
                            const Waypoints &previous_path);
 
-    void detectTraffic(const std::vector<Car> &traffic, const Car &ego_car_state);
+    void detectTraffic(const vector<Car> &traffic, const Car &ego_car_state);
 
-    void predictTraffic(const std::vector<Car> &traffic, const int &subpath_size);
+    void predictTraffic(const vector<Car> &traffic, const int &subpath_size);
 
     void updateStates();
 
-    std::vector<double> get_leading_vehicle_data_for_lane(int target_lane,
-                                                          std::map<int, std::vector<std::vector<double>>> predictions,
-                                                          double duration);
+    vector<double> get_leading_vehicle_data_for_lane(int target_lane,
+                                                     std::map<int, vector<vector<double>>> predictions,
+                                                     double duration);
 
-    double calculateCost(std::vector<double> s_traj,
-                                std::vector<double> d_traj,
-                                std::map<int, std::vector<std::vector<double>>> predictions);
+    double calculateCost(vector<double> s_traj,
+                         vector<double> d_traj,
+                         std::map<int, vector<vector<double>>> predictions);
 
-    std::vector<std::vector<double>> calculateTrajectory(std::vector<std::vector<double>> target, double duration);
+    vector<vector<double>> calculateTrajectory(vector<vector<double>> target, double duration);
 
-    std::vector<std::vector<double>> calculateTarget(std::string state,
-                                                          std::map<int, std::vector<std::vector<double>>> predictions,
-                                                          double duration,
-                                                          bool car_just_ahead);
+    vector<vector<double>> calculateTarget(std::string state,
+                                           std::map<int, vector<vector<double>>> predictions,
+                                           double duration,
+                                           bool car_just_ahead);
 
-    void generateTarget(const std::vector<Car> &traffic, const Car &ego_car_state, const int &subpath_size);
+    vector<vector<double>> generateTarget(const vector<Car> &traffic, const Car &ego_car_state, const int &subpath_size);
+
+    void generateNewPath(const vector<vector<double>> &target,
+                         const Waypoints &interpolated_waypoints,
+                         const Waypoints &previous_path,
+                         const int &subpath_size,
+                         vector<double> &next_x_vals,
+                         vector<double> &next_y_vals);
 
     PathPlanner(){};
     ~PathPlanner();

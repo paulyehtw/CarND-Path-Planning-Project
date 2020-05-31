@@ -75,6 +75,9 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
     // use default values if not enough previous path points
     if (subpath_size < 4)
     {
+        pos_x = ego_car_state.x;
+        pos_y = ego_car_state.y;
+        angle = deg2rad(ego_car_state.yaw);
         pos_s = ego_car_state.s;
         pos_d = ego_car_state.d;
         s_dot = ego_car_state.v;
@@ -141,6 +144,9 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
         d_ddot2 = function(d_ddot_coeffs, eval_time);
     }
 
+    x = pos_x;
+    y = pos_y;
+    yaw = angle;
     s = pos_s;     // s position
     s_d = s_dot;   // s dot - velocity in s
     s_dd = s_ddot; // s dot-dot - acceleration in s
@@ -318,9 +324,9 @@ std::vector<double> PathPlanner::get_leading_vehicle_data_for_lane(int target_la
 }
 
 std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string state,
-                                                                   std::map<int, std::vector<std::vector<double>>> predictions,
-                                                                   double duration,
-                                                                   bool car_just_ahead)
+                                                              std::map<int, std::vector<std::vector<double>>> predictions,
+                                                              double duration,
+                                                              bool car_just_ahead)
 {
     // Returns two lists s_target and d_target in a single vector - s_target includes
     // [s, s_dot, and s_ddot] and d_target includes the same
@@ -390,8 +396,8 @@ std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string state,
 }
 
 double PathPlanner::calculateCost(std::vector<double> s_traj,
-                                         std::vector<double> d_traj,
-                                         std::map<int, std::vector<std::vector<double>>> predictions)
+                                  std::vector<double> d_traj,
+                                  std::map<int, std::vector<std::vector<double>>> predictions)
 {
 
     double total_cost = 0;
@@ -406,7 +412,7 @@ double PathPlanner::calculateCost(std::vector<double> s_traj,
     return total_cost;
 }
 
-void PathPlanner::generateTarget(const std::vector<Car> &traffic, const Car &ego_car_state, const int &subpath_size)
+vector<vector<double>> PathPlanner::generateTarget(const std::vector<Car> &traffic, const Car &ego_car_state, const int &subpath_size)
 {
     vector<vector<double>> best_target;
     double best_cost = std::numeric_limits<double>::max();
@@ -416,9 +422,9 @@ void PathPlanner::generateTarget(const std::vector<Car> &traffic, const Car &ego
     for (std::string state : available_states)
     {
         vector<vector<double>> target_s_and_d = calculateTarget(state,
-                                                                     traffic_predictions,
-                                                                     duration,
-                                                                     traffic_states.car_ahead);
+                                                                traffic_predictions,
+                                                                duration,
+                                                                traffic_states.car_ahead);
 
         vector<vector<double>> possible_traj = calculateTrajectory(target_s_and_d, duration);
 
@@ -430,5 +436,103 @@ void PathPlanner::generateTarget(const std::vector<Car> &traffic, const Car &ego
             best_traj_state = state;
             best_target = target_s_and_d;
         }
+    }
+    return best_target;
+}
+
+void PathPlanner::generateNewPath(const vector<vector<double>> &target,
+                                  const Waypoints &interpolated_waypoints,
+                                  const Waypoints &previous_path,
+                                  const int &subpath_size,
+                                  vector<double> &next_x_vals,
+                                  vector<double> &next_y_vals)
+{
+    // begin by pushing the last and next-to-last point from the previous path for setting the
+    // spline the last point should be the first point in the returned trajectory, but because of
+    // imprecision, also add that point manually
+
+    vector<double> coarse_s_traj, coarse_x_traj, coarse_y_traj, interpolated_s_traj,
+        interpolated_x_traj, interpolated_y_traj;
+
+    double prev_s = s - s_d * PlannerParameter::dt;
+
+    // first two points of coarse trajectory, to ensure spline begins smoothly
+    if (subpath_size >= 2)
+    {
+        coarse_s_traj.push_back(prev_s);
+        coarse_x_traj.push_back(previous_path.x[subpath_size - 2]);
+        coarse_y_traj.push_back(previous_path.y[subpath_size - 2]);
+        coarse_s_traj.push_back(s);
+        coarse_x_traj.push_back(previous_path.x[subpath_size - 1]);
+        coarse_y_traj.push_back(previous_path.y[subpath_size - 1]);
+    }
+    else
+    {
+        double prev_s = s - 1;
+        double prev_x = x - cos(yaw);
+        double prev_y = y - sin(yaw);
+        coarse_s_traj.push_back(prev_s);
+        coarse_x_traj.push_back(prev_x);
+        coarse_y_traj.push_back(prev_y);
+        coarse_s_traj.push_back(s);
+        coarse_x_traj.push_back(x);
+        coarse_y_traj.push_back(y);
+    }
+
+    // last two points of coarse trajectory, use target_d and current s + 30,60
+    double target_s1 = s + 30;
+    double target_d1 = target[1][0];
+    vector<double> target_xy1 = getXY(target_s1, target_d1, interpolated_waypoints.s, interpolated_waypoints.x, interpolated_waypoints.y);
+    double target_x1 = target_xy1[0];
+    double target_y1 = target_xy1[1];
+    coarse_s_traj.push_back(target_s1);
+    coarse_x_traj.push_back(target_x1);
+    coarse_y_traj.push_back(target_y1);
+    double target_s2 = target_s1 + 30;
+    double target_d2 = target_d1;
+    vector<double> target_xy2 = getXY(target_s2, target_d2, interpolated_waypoints.s, interpolated_waypoints.x, interpolated_waypoints.y);
+    double target_x2 = target_xy2[0];
+    double target_y2 = target_xy2[1];
+    coarse_s_traj.push_back(target_s2);
+    coarse_x_traj.push_back(target_x2);
+    coarse_y_traj.push_back(target_y2);
+
+    // next s values
+    double target_s_dot = target[0][1];
+    double current_s = s;
+    double current_v = s_d;
+    double current_a = s_dd;
+    for (int i = 0; i < (PlannerParameter::kNumPathPoints - subpath_size); i++)
+    {
+        double v_incr, a_incr;
+        if (fabs(target_s_dot - current_v) < 2 * VELOCITY_INCREMENT_LIMIT)
+        {
+            v_incr = 0;
+        }
+        else
+        {
+            // arrived at VELOCITY_INCREMENT_LIMIT value empirically
+            v_incr = (target_s_dot - current_v) / (fabs(target_s_dot - current_v)) * VELOCITY_INCREMENT_LIMIT;
+        }
+        current_v += v_incr;
+        current_s += current_v * PlannerParameter::dt;
+        interpolated_s_traj.push_back(current_s);
+    }
+
+    interpolated_x_traj = interpolate(coarse_s_traj, coarse_x_traj, interpolated_s_traj);
+    interpolated_y_traj = interpolate(coarse_s_traj, coarse_y_traj, interpolated_s_traj);
+
+    // add previous path, if any, to next path
+    for (int i = 0; i < subpath_size; i++)
+    {
+        next_x_vals.push_back(previous_path.x[i]);
+        next_y_vals.push_back(previous_path.y[i]);
+    }
+    // add xy points from newly generated path
+    for (int i = 0; i < interpolated_x_traj.size(); i++)
+    {
+        //if (subpath_size == 0 && i == 0) continue; // maybe skip start position as a path point?
+        next_x_vals.push_back(interpolated_x_traj[i]);
+        next_y_vals.push_back(interpolated_y_traj[i]);
     }
 }
