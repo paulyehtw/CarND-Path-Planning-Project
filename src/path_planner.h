@@ -2,7 +2,7 @@
 #define PATH_PLANNER_H
 
 #include "Eigen-3.3/Eigen/Dense"
-#include "car.h"
+#include "detection.h"
 #include "waypoints.h"
 #include <algorithm>
 #include <map>
@@ -78,7 +78,7 @@ struct TrafficStates
 
 class PathPlanner
 {
-
+    // Information of ego car
     // Cartesian coordinates
     double x;
     double y;
@@ -101,16 +101,14 @@ class PathPlanner
     std::map<int, vector<vector<double>>> traffic_predictions;
 
 public:
-    vector<CarDetected> sensor_detections;
-    Waypoints detectClosestWaypoints(const Car &ego_car_state,
-                                     const Waypoints &map);
+    vector<Detection> sensor_detections;
+    Waypoints detectClosestWaypoints(const Waypoints &map);
     Waypoints interpolateWaypoints(const Waypoints &waypoints);
 
-    int updateCoefficients(Car &ego_car_state,
-                           const Waypoints &interpolated_waypoints,
+    int updateCoefficients(const Waypoints &interpolated_waypoints,
                            const Waypoints &previous_path);
 
-    void detectTraffic(const std::vector<CarDetected> &sensor_detections, const Car &ego_car_state);
+    void detectTraffic(const std::vector<Detection> &sensor_detections);
 
     void predictTraffic();
 
@@ -140,7 +138,31 @@ public:
                          vector<double> &next_x_vals,
                          vector<double> &next_y_vals);
 
+    void planPath(const Waypoints &map,
+                  const Waypoints &previous_path,
+                  std::vector<double> &next_x_vals,
+                  std::vector<double> &next_y_vals)
+    {
+        Waypoints closest_waypoints = detectClosestWaypoints(map);
+        Waypoints interpolated_waypoints = interpolateWaypoints(closest_waypoints);
+        updateCoefficients(interpolated_waypoints, previous_path);
+        predictTraffic();
+        detectTraffic(sensor_detections);
+        updateStates();
+        vector<vector<double>> target = generateTarget();
+        generateNewPath(target, interpolated_waypoints, previous_path, next_x_vals, next_y_vals);
+    }
+
     PathPlanner(){};
+    void Initialize(double car_x, double car_y, double car_s, double car_d, double car_v, double car_yaw)
+    {
+        x = car_x;
+        y = car_y;
+        s = car_s;
+        d = car_d;
+        s_d = car_v * 0.44704; // mph to m/s
+        yaw = car_yaw;
+    };
     ~PathPlanner(){};
 };
 

@@ -3,13 +3,12 @@
 #include <iostream>
 #include <limits>
 
-Waypoints PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
-                                              const Waypoints &map)
+Waypoints PathPlanner::detectClosestWaypoints(const Waypoints &map)
 {
     int num_waypoints = map.x.size();
-    int next_waypoint_index = NextWaypoint(ego_car_state.x,
-                                           ego_car_state.y,
-                                           ego_car_state.yaw,
+    int next_waypoint_index = NextWaypoint(x,
+                                           y,
+                                           yaw,
                                            map.x,
                                            map.y);
 
@@ -66,8 +65,7 @@ Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
     return interpolated_waypoints;
 }
 
-int PathPlanner::updateCoefficients(Car &ego_car_state,
-                                    const Waypoints &interpolated_waypoints,
+int PathPlanner::updateCoefficients(const Waypoints &interpolated_waypoints,
                                     const Waypoints &previous_path)
 {
     double pos_s, s_dot, s_ddot;
@@ -82,12 +80,12 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
     // use default values if not enough previous path points
     if (subpath_size < 4)
     {
-        pos_x = ego_car_state.x;
-        pos_y = ego_car_state.y;
-        angle = deg2rad(ego_car_state.yaw);
-        pos_s = ego_car_state.s;
-        pos_d = ego_car_state.d;
-        s_dot = ego_car_state.v;
+        pos_x = x;
+        pos_y = y;
+        angle = deg2rad(yaw);
+        pos_s = s;
+        pos_d = d;
+        s_dot = s_d;
         d_dot = 0;
         s_ddot = 0;
         d_ddot = 0;
@@ -162,16 +160,16 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
     d_dd = d_ddot; // d dot-dot - acceleration in d
 }
 
-void PathPlanner::detectTraffic(const std::vector<CarDetected> &sensor_detections, const Car &ego_car_state)
+void PathPlanner::detectTraffic(const std::vector<Detection> &sensor_detections)
 {
     traffic_states.reset();
 
-    for (CarDetected car : sensor_detections)
+    for (Detection car : sensor_detections)
     {
-        double s_diff = fabs(car.s - ego_car_state.s);
+        double s_diff = fabs(car.s - s);
         if (s_diff < PlannerParameter::kMinLeadingDistance)
         {
-            double d_diff = car.d - ego_car_state.d;
+            double d_diff = car.d - d;
             if (d_diff > 2 && d_diff < 6)
             {
                 traffic_states.car_on_right = true;
@@ -192,25 +190,21 @@ void PathPlanner::predictTraffic()
 {
     double traj_start_time = subpath_size * PATH_DT;
     double duration = N_SAMPLES * DT - subpath_size * PATH_DT;
-    vector<Car> other_cars;
     // std::map<int, vector<vector<double>>> predictions;
     traffic_predictions.clear();
     double other_car_vel_test = 0;
 
-    for (CarDetected &car_deteceted : sensor_detections)
+    for (Detection &car_deteceted : sensor_detections)
     {
         double other_car_vel = sqrt(pow((double)car_deteceted.vx, 2) + pow((double)car_deteceted.vy, 2));
-        other_car_vel_test += other_car_vel;
-        Car car = Car(0.0F, 0.0F, car_deteceted.s, car_deteceted.d, other_car_vel, 0.0F);
-        other_cars.push_back(car);
         int v_id = car_deteceted.id;
 
         std::vector<std::vector<double>> prediction{};
         for (int i = 0; i < PlannerParameter::kNumSamples; i++)
         {
             double t = traj_start_time + (i * duration / PlannerParameter::kNumSamples);
-            double s_pred = car.s + car.v * t;
-            vector<double> s_and_d = {s_pred, car.d};
+            double s_pred = car_deteceted.s + other_car_vel * t;
+            vector<double> s_and_d = {s_pred, car_deteceted.d};
             prediction.push_back(s_and_d);
         }
 

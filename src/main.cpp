@@ -1,8 +1,8 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
-#include "car.h"
-#include "ego_car.h"
+#include "detection.h"
 #include "json.hpp"
+#include "path_planner.h"
 #include "uWebSockets/src/uWS.h"
 #include "waypoints.h"
 #include <fstream>
@@ -50,7 +50,7 @@ int main()
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
 
-  EgoCar *ego_car = new EgoCar();
+  PathPlanner *planner = new PathPlanner();
 
   std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
 
@@ -75,7 +75,7 @@ int main()
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([ego_car,
+  h.onMessage([planner,
                &map_waypoints_x,
                &map_waypoints_y,
                &map_waypoints_s,
@@ -123,10 +123,6 @@ int main()
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
-          car_speed *= 0.44704; // mph to m/s
-
-          ego_car->ego_car = Car(car_x, car_y, car_s, car_d, car_speed, car_yaw);
-
           Waypoints previous_path = Waypoints(previous_path_x,
                                               previous_path_y);
 
@@ -136,14 +132,16 @@ int main()
                                               map_waypoints_dx,
                                               map_waypoints_dy);
 
-          ego_car->path_planner.sensor_detections.clear();
+          planner->Initialize(car_x, car_y, car_s, car_d, car_speed, car_yaw);
+
+          planner->sensor_detections.clear();
           for (auto sf : sensor_fusion)
           {
-            CarDetected car_detected = CarDetected(sf[0], sf[1], sf[2], sf[3], sf[4], sf[5], sf[6]);
-            ego_car->path_planner.sensor_detections.push_back(car_detected);
+            Detection detection = Detection(sf[0], sf[1], sf[2], sf[3], sf[4], sf[5], sf[6]);
+            planner->sensor_detections.push_back(detection);
           }
 
-          ego_car->planPath(map_waypoints, previous_path, next_x_vals, next_y_vals);
+          planner->planPath(map_waypoints, previous_path, next_x_vals, next_y_vals);
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
