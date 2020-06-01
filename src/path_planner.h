@@ -44,7 +44,7 @@ class PathPlanner
     int subpath_size;
     vector<double> s_traj_coeffs;
     vector<double> d_traj_coeffs;
-    vector<std::string> available_states;
+    vector<std::string> behaviour_list;
 
     TrafficStates traffic_states;
     std::map<int, vector<vector<double>>> traffic_predictions;
@@ -53,14 +53,14 @@ class PathPlanner
 
     Waypoints interpolateWaypoints(const Waypoints &waypoints);
 
-    void updateState(const Waypoints &interpolated_waypoints,
-                     const Waypoints &previous_path);
+    void updateEgoCarState(const Waypoints &interpolated_waypoints,
+                           const Waypoints &previous_path);
 
     void checkSurrounding(const std::vector<Detection> &sensor_detections);
 
     void predictTraffic();
 
-    void updateStates();
+    void updateBehaviourList();
 
     double calculateCost(vector<double> s_traj,
                          vector<double> d_traj,

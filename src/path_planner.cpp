@@ -71,8 +71,8 @@ Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
     return interpolated_waypoints;
 }
 
-void PathPlanner::updateState(const Waypoints &interpolated_waypoints,
-                              const Waypoints &previous_path)
+void PathPlanner::updateEgoCarState(const Waypoints &interpolated_waypoints,
+                                    const Waypoints &previous_path)
 {
     double pos_s, s_dot, s_ddot;
     double pos_d, d_dot, d_ddot;
@@ -200,16 +200,16 @@ void PathPlanner::predictTraffic()
     }
 }
 
-void PathPlanner::updateStates()
+void PathPlanner::updateBehaviourList()
 {
-    available_states = {"KL"};
+    behaviour_list = {"KeepLane"};
     if (d > 4 && !traffic_states.car_on_left)
     {
-        available_states.push_back("LCL");
+        behaviour_list.push_back("ChangeLeft");
     }
     if (d < 8 && !traffic_states.car_on_right)
     {
-        available_states.push_back("LCR");
+        behaviour_list.push_back("ChangeRight");
     }
 }
 
@@ -230,7 +230,6 @@ std::vector<std::vector<double>> PathPlanner::calculateTrajectory(std::vector<st
     vector<double> s_traj;
     vector<double> d_traj;
 
-    // populate s and t trajectories at each time step
     for (int i = 0; i < Planner::kNumSamples; i++)
     {
         double t = i * duration / Planner::kNumSamples;
@@ -247,7 +246,7 @@ std::vector<std::vector<double>> PathPlanner::calculateTrajectory(std::vector<st
     return {s_traj, d_traj};
 }
 
-std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string state,
+std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string behaviour,
                                                               std::map<int, std::vector<std::vector<double>>> predictions,
                                                               double duration,
                                                               bool car_just_ahead)
@@ -257,41 +256,35 @@ std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string state,
     // If no leading car found target lane, ego car will make up PERCENT_V_DIFF_TO_MAKE_UP of the difference
     // between current velocity and target velocity. If leading car is found set target s to FOLLOW_DISTANCE
     // and target s_dot to leading car's s_dot based on predictions
-    int target_lane, current_lane = d / 4;
-    double target_d;
-    // **** TARGETS ****
-    // lateral displacement : depends on state
+
+    // Desire :
+    // lateral displacement : depends on behaviour
     // lateral velocity : 0
+    int target_lane, current_lane = d / Road::kWidth;
+    double target_d;
     double target_d_d = 0;
-    // lateral acceleration : 0
     double target_d_dd = 0;
-    // longitudinal velocity : current velocity + max allowed accel * duration
-    double target_s_d = std::min((float)(s_d + kAccelerationLimit / 4 * duration), Road::kSpeedLimit);
+    double target_s_d = std::min((float)(s_d + kAccelerationLimit / Road::kWidth * duration), Road::kSpeedLimit);
     target_s_d = Road::kSpeedLimit;
-    // longitudinal acceleration : zero ?
     double target_s_dd = 0;
-    // longitudinal acceleration : difference between current/target velocity over trajectory duration?
-    //double target_s_dd = (target_s_d - s_d) / (N_SAMPLES * DT);
-    // longitudinal displacement : current displacement plus difference in current/target velocity times
-    // trajectory duration
     double target_s = s + (s_d + target_s_d) / 2 * duration;
 
     vector<double> leading_vehicle_s_and_sdot;
 
-    if (state.compare("KL") == 0)
+    if (behaviour.compare("KeepLane") == 0)
     {
-        target_d = (double)current_lane * 4 + 2;
-        target_lane = target_d / 4;
+        target_d = (double)current_lane * Road::kWidth + 0.5 * Road::kWidth;
+        target_lane = target_d / Road::kWidth;
     }
-    else if (state.compare("LCL") == 0)
+    else if (behaviour.compare("ChangeLeft") == 0)
     {
-        target_d = ((double)current_lane - 1) * 4 + 2;
-        target_lane = target_d / 4;
+        target_d = ((double)current_lane - 1) * Road::kWidth + 0.5 * Road::kWidth;
+        target_lane = target_d / Road::kWidth;
     }
-    else if (state.compare("LCR") == 0)
+    else if (behaviour.compare("ChangeRight") == 0)
     {
-        target_d = ((double)current_lane + 1) * 4 + 2;
-        target_lane = target_d / 4;
+        target_d = ((double)current_lane + 1) * Road::kWidth + 0.5 * Road::kWidth;
+        target_lane = target_d / Road::kWidth;
     }
 
     // replace target_s variables if there is a leading vehicle close enough
@@ -336,9 +329,9 @@ vector<vector<double>> PathPlanner::generateTarget()
     vector<vector<double>> best_target;
     double best_cost = std::numeric_limits<double>::max();
     double duration = Planner::kNumSamples * Planner::kSampleDt - subpath_size * Planner::dt;
-    for (std::string state : available_states)
+    for (std::string behaviour : behaviour_list)
     {
-        vector<vector<double>> target_s_and_d = calculateTarget(state,
+        vector<vector<double>> target_s_and_d = calculateTarget(behaviour,
                                                                 traffic_predictions,
                                                                 duration,
                                                                 traffic_states.car_ahead);
@@ -362,10 +355,6 @@ void PathPlanner::generateNewPath(const vector<vector<double>> &target,
                                   vector<double> &next_x_vals,
                                   vector<double> &next_y_vals)
 {
-    // begin by pushing the last and next-to-last point from the previous path for setting the
-    // spline the last point should be the first point in the returned trajectory, but because of
-    // imprecision, also add that point manually
-
     vector<double> coarse_s_traj, coarse_x_traj, coarse_y_traj, interpolated_s_traj,
         interpolated_x_traj, interpolated_y_traj;
 
@@ -452,7 +441,6 @@ void PathPlanner::generateNewPath(const vector<vector<double>> &target,
     // add xy points from newly generated path
     for (int i = 0; i < interpolated_x_traj.size(); i++)
     {
-        //if (subpath_size == 0 && i == 0) continue; // maybe skip start position as a path point?
         next_x_vals.push_back(interpolated_x_traj[i]);
         next_y_vals.push_back(interpolated_y_traj[i]);
     }
@@ -465,10 +453,10 @@ void PathPlanner::planPath(const Waypoints &map,
 {
     Waypoints closest_waypoints = detectClosestWaypoints(map);
     Waypoints interpolated_waypoints = interpolateWaypoints(closest_waypoints);
-    updateState(interpolated_waypoints, previous_path);
+    updateEgoCarState(interpolated_waypoints, previous_path);
     predictTraffic();
     checkSurrounding(sensor_detections);
-    updateStates();
+    updateBehaviourList();
     vector<vector<double>> target = generateTarget();
     generateNewPath(target, interpolated_waypoints, previous_path, next_x_vals, next_y_vals);
 }
