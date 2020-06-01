@@ -402,7 +402,6 @@ void PathPlanner::generateNewPath(const vector<vector<double>> &target,
     double target_s_dot = target[0][1];
     double current_s = s;
     double current_v = s_d;
-    double current_a = s_dd;
     for (int i = 0; i < (Planner::kNumPathPoints - subpath_size); i++)
     {
         double v_incr, a_incr;

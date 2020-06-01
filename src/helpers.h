@@ -181,17 +181,6 @@ namespace TrajectoryHelper
     /*
     Calculate the Jerk Minimizing Trajectory that connects the initial state
     to the final state in time T.
-
-    INPUTS
-    start - the vehicles start location given as a length three array
-        corresponding to initial values of [s, s_dot, s_double_dot]
-    end   - the desired end state for vehicle. Like "start" this is a
-        length three array.
-    T     - The duration, in seconds, over which this maneuver should occur.
-
-    OUTPUT
-    an array of length 6, each value corresponding to a coefficent in the polynomial
-    s(t) = a_0 + a_1 * t + a_2 * t**2 + a_3 * t**3 + a_4 * t**4 + a_5 * t**5
     */
 
     Eigen::MatrixXd a(3, 3);
@@ -219,9 +208,6 @@ namespace TrajectoryHelper
                                      double duration,
                                      double s)
   {
-    // returns s and s_dot for the nearest (ahead) vehicle in target lane
-    // this assumes the dummy vehicle will keep its lane and velocity, it will return the end position
-    // and velocity (based on difference between last two positions)
     double nearest_leading_vehicle_speed = 0, nearest_leading_vehicle_distance = 99999;
     for (auto prediction : predictions)
     {
@@ -306,9 +292,6 @@ namespace CostHelper
 
   vector<double> velocitiesTrajectory(vector<double> traj)
   {
-    // given a trajectory (a vector of positions), return the average velocity between each pair as a vector
-    // also can be used to find accelerations from velocities, jerks from accelerations, etc.
-    // (i.e. discrete derivatives)
     vector<double> velocities;
     for (int i = 1; i < traj.size(); i++)
     {
