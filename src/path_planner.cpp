@@ -3,10 +3,20 @@
 #include <iostream>
 #include <limits>
 
+void PathPlanner::Initialize(double car_x, double car_y, double car_s, double car_d, double car_v, double car_yaw)
+{
+    x = car_x;
+    y = car_y;
+    s = car_s;
+    d = car_d;
+    s_d = car_v * 0.44704; // mph to m/s
+    yaw = car_yaw;
+};
+
 Waypoints PathPlanner::detectClosestWaypoints(const Waypoints &map)
 {
     int num_waypoints = map.x.size();
-    int next_waypoint_index = NextWaypoint(x,
+    int next_waypoint_index = nextWaypoint(x,
                                            y,
                                            yaw,
                                            map.x,
@@ -106,7 +116,7 @@ int PathPlanner::updateCoefficients(const Waypoints &interpolated_waypoints,
         // since interpolated waypoints are ~1m apart and path points tend to be <0.5m apart, these
         // values can be reused for previous two points (and using the previous waypoint data may be
         // more accurate) to calculate vel_s (s_dot), vel_d (d_dot), acc_s (s_ddot), and acc_d (d_ddot)
-        int next_interp_waypoint_index = NextWaypoint(pos_x, pos_y,
+        int next_interp_waypoint_index = nextWaypoint(pos_x, pos_y,
                                                       angle,
                                                       interpolated_waypoints.x,
                                                       interpolated_waypoints.y);
@@ -160,14 +170,14 @@ int PathPlanner::updateCoefficients(const Waypoints &interpolated_waypoints,
     d_dd = d_ddot; // d dot-dot - acceleration in d
 }
 
-void PathPlanner::detectTraffic(const std::vector<Detection> &sensor_detections)
+void PathPlanner::checkSurrounding(const std::vector<Detection> &sensor_detections)
 {
     traffic_states.reset();
 
     for (Detection car : sensor_detections)
     {
-        double s_diff = fabs(car.s - s);
-        if (s_diff < PlannerParameter::kMinLeadingDistance)
+        double s_diff = car.s - s;
+        if (fabs(s_diff) < PlannerParameter::kMinLeadingDistance)
         {
             double d_diff = car.d - d;
             if (d_diff > 2 && d_diff < 6)
@@ -178,9 +188,13 @@ void PathPlanner::detectTraffic(const std::vector<Detection> &sensor_detections)
             {
                 traffic_states.car_on_left = true;
             }
-            else if (d_diff > -2 && d_diff < 2)
+            else if (d_diff > -2 && d_diff < 2 && s_diff > 0)
             {
                 traffic_states.car_ahead = true;
+            }
+            else if (d_diff > -2 && d_diff < 2 && s_diff < 0)
+            {
+                traffic_states.car_behind = true;
             }
         }
     }
@@ -216,11 +230,11 @@ void PathPlanner::predictTraffic()
 void PathPlanner::updateStates()
 {
     available_states = {"KL"};
-    if (d > 4 && !traffic_states.car_on_left)
+    if (d > 4 && !traffic_states.car_on_left && !traffic_states.car_behind)
     {
         available_states.push_back("LCL");
     }
-    if (d < 8 && !traffic_states.car_on_right)
+    if (d < 8 && !traffic_states.car_on_right && !traffic_states.car_behind)
     {
         available_states.push_back("LCR");
     }
@@ -413,10 +427,10 @@ double PathPlanner::calculateCost(std::vector<double> s_traj,
 {
     double total_cost = 0;
     double col = CostCalculatorHelper::collision_cost(s_traj, d_traj, predictions) * COLLISION_COST_WEIGHT;
-    double buf = CostCalculatorHelper::buffer_cost(s_traj, d_traj, predictions) * BUFFER_COST_WEIGHT;
+    double buf = 0; //CostCalculatorHelper::buffer_cost(s_traj, d_traj, predictions) * BUFFER_COST_WEIGHT;
     double ilb = CostCalculatorHelper::in_lane_buffer_cost(s_traj, d_traj, predictions) * IN_LANE_BUFFER_COST_WEIGHT;
     double eff = CostCalculatorHelper::efficiency_cost(s_traj) * EFFICIENCY_COST_WEIGHT;
-    double nml = CostCalculatorHelper::not_middle_lane_cost(d_traj) * NOT_MIDDLE_LANE_COST_WEIGHT;
+    double nml = 0; //CostCalculatorHelper::not_middle_lane_cost(d_traj) * NOT_MIDDLE_LANE_COST_WEIGHT;
 
     total_cost += col + buf + ilb + eff + nml; // + esl + mas + aas + mad + aad + mjs + ajs + mjd + ajd;
 
@@ -545,4 +559,19 @@ void PathPlanner::generateNewPath(const vector<vector<double>> &target,
         next_x_vals.push_back(interpolated_x_traj[i]);
         next_y_vals.push_back(interpolated_y_traj[i]);
     }
+}
+
+void PathPlanner::planPath(const Waypoints &map,
+                           const Waypoints &previous_path,
+                           std::vector<double> &next_x_vals,
+                           std::vector<double> &next_y_vals)
+{
+    Waypoints closest_waypoints = detectClosestWaypoints(map);
+    Waypoints interpolated_waypoints = interpolateWaypoints(closest_waypoints);
+    updateCoefficients(interpolated_waypoints, previous_path);
+    predictTraffic();
+    checkSurrounding(sensor_detections);
+    updateStates();
+    vector<vector<double>> target = generateTarget();
+    generateNewPath(target, interpolated_waypoints, previous_path, next_x_vals, next_y_vals);
 }

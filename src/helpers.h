@@ -2,6 +2,7 @@
 #define HELPERS_H
 
 #include "spline.h"
+#include <limits>
 #include <map>
 #include <math.h>
 #include <string>
@@ -29,10 +30,10 @@ double distance(double x1, double y1, double x2, double y2)
 }
 
 // Calculate closest waypoint to current x, y position
-int ClosestWaypoint(double x, double y, const vector<double> &maps_x,
+int closestWaypoint(double x, double y, const vector<double> &maps_x,
                     const vector<double> &maps_y)
 {
-  double closestLen = 100000; //large number
+  double closestLen = std::numeric_limits<double>::max();
   int closestWaypoint = 0;
 
   for (int i = 0; i < maps_x.size(); ++i)
@@ -51,13 +52,13 @@ int ClosestWaypoint(double x, double y, const vector<double> &maps_x,
 }
 
 // Returns next waypoint of the closest waypoint
-int NextWaypoint(double x, double y, double theta, const vector<double> &maps_x,
+int nextWaypoint(double x, double y, double theta, const vector<double> &maps_x,
                  const vector<double> &maps_y)
 {
-  int closestWaypoint = ClosestWaypoint(x, y, maps_x, maps_y);
+  int closest_waypoint = closestWaypoint(x, y, maps_x, maps_y);
 
-  double map_x = maps_x[closestWaypoint];
-  double map_y = maps_y[closestWaypoint];
+  double map_x = maps_x[closest_waypoint];
+  double map_y = maps_y[closest_waypoint];
 
   double heading = atan2((map_y - y), (map_x - x));
 
@@ -66,20 +67,20 @@ int NextWaypoint(double x, double y, double theta, const vector<double> &maps_x,
 
   if (angle > pi() / 2)
   {
-    ++closestWaypoint;
-    if (closestWaypoint == maps_x.size())
+    ++closest_waypoint;
+    if (closest_waypoint == maps_x.size())
     {
-      closestWaypoint = 0;
+      closest_waypoint = 0;
     }
   }
 
-  return closestWaypoint;
+  return closest_waypoint;
 }
 
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
 vector<double> getFrenet(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y, vector<double> maps_s)
 {
-  int next_wp = NextWaypoint(x, y, theta, maps_x, maps_y);
+  int next_wp = nextWaypoint(x, y, theta, maps_x, maps_y);
   int prev_wp;
   prev_wp = next_wp - 1;
   if (next_wp == 0)
@@ -163,11 +164,8 @@ vector<double> interpolate(vector<double> pts_x,
                            vector<double> pts_y,
                            vector<double> eval_at_x)
 {
-  // uses the spline library to interpolate points connecting a series of x and y values
-  // output is spline evaluated at each eval_at_x point
-
   tk::spline s;
-  s.set_points(pts_x, pts_y); // currently it is required that X is already sorted
+  s.set_points(pts_x, pts_y);
   vector<double> interpolated;
   for (double x : eval_at_x)
   {
@@ -200,14 +198,12 @@ namespace CostCalculatorHelper
 {
   double logistic(double x)
   {
-    // A function that returns a value between 0 and 1 for x in the range[0, infinity] and - 1 to 1 for x in
-    // the range[-infinity, infinity]. Useful for cost functions.
     return 2.0 / (1 + exp(-x)) - 1.0;
   }
 
   double nearest_approach(vector<double> s_traj, vector<double> d_traj, vector<vector<double>> prediction)
   {
-    double closest = 999999;
+    double closest = std::numeric_limits<double>::max();
     for (int i = 0; i < N_SAMPLES; i++)
     {
       double current_dist = sqrt(pow(s_traj[i] - prediction[i][0], 2) + pow(d_traj[i] - prediction[i][1], 2));
@@ -222,7 +218,7 @@ namespace CostCalculatorHelper
   double nearest_approach_to_any_vehicle(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
-    double closest = 999999;
+    double closest = std::numeric_limits<double>::max();
     for (auto prediction : predictions)
     {
       double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
@@ -237,7 +233,7 @@ namespace CostCalculatorHelper
   double nearest_approach_to_any_vehicle_in_lane(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
-    double closest = 999999;
+    double closest = std::numeric_limits<double>::max();
     for (auto prediction : predictions)
     {
       double my_final_d = d_traj[d_traj.size() - 1];

@@ -68,11 +68,13 @@ struct TrafficStates
     bool car_on_left;
     bool car_on_right;
     bool car_ahead;
+    bool car_behind;
     void reset()
     {
         car_on_left = false;
         car_on_right = false;
         car_ahead = false;
+        car_behind = false;
     };
 };
 
@@ -100,15 +102,13 @@ class PathPlanner
     TrafficStates traffic_states;
     std::map<int, vector<vector<double>>> traffic_predictions;
 
-public:
-    vector<Detection> sensor_detections;
     Waypoints detectClosestWaypoints(const Waypoints &map);
     Waypoints interpolateWaypoints(const Waypoints &waypoints);
 
     int updateCoefficients(const Waypoints &interpolated_waypoints,
                            const Waypoints &previous_path);
 
-    void detectTraffic(const std::vector<Detection> &sensor_detections);
+    void checkSurrounding(const std::vector<Detection> &sensor_detections);
 
     void predictTraffic();
 
@@ -138,32 +138,18 @@ public:
                          vector<double> &next_x_vals,
                          vector<double> &next_y_vals);
 
+public:
+    PathPlanner(){};
+    ~PathPlanner(){};
+
+    vector<Detection> sensor_detections;
+
+    void Initialize(double car_x, double car_y, double car_s, double car_d, double car_v, double car_yaw);
+
     void planPath(const Waypoints &map,
                   const Waypoints &previous_path,
                   std::vector<double> &next_x_vals,
-                  std::vector<double> &next_y_vals)
-    {
-        Waypoints closest_waypoints = detectClosestWaypoints(map);
-        Waypoints interpolated_waypoints = interpolateWaypoints(closest_waypoints);
-        updateCoefficients(interpolated_waypoints, previous_path);
-        predictTraffic();
-        detectTraffic(sensor_detections);
-        updateStates();
-        vector<vector<double>> target = generateTarget();
-        generateNewPath(target, interpolated_waypoints, previous_path, next_x_vals, next_y_vals);
-    }
-
-    PathPlanner(){};
-    void Initialize(double car_x, double car_y, double car_s, double car_d, double car_v, double car_yaw)
-    {
-        x = car_x;
-        y = car_y;
-        s = car_s;
-        d = car_d;
-        s_d = car_v * 0.44704; // mph to m/s
-        yaw = car_yaw;
-    };
-    ~PathPlanner(){};
+                  std::vector<double> &next_y_vals);
 };
 
 #endif // PATH_PLANNER_H
