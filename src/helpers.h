@@ -174,37 +174,88 @@ vector<double> interpolate(vector<double> pts_x,
   return interpolated;
 }
 
-vector<double> differentiate(vector<double> coeffs)
+namespace TrajectoryHelper
 {
-  vector<double> diff_coeffs;
-  for (int i = 1; i < coeffs.size(); i++)
+  std::vector<double> getTrajCoeffs(std::vector<double> start, std::vector<double> end, double T)
   {
-    diff_coeffs.push_back(i * coeffs[i]);
-  }
-  return diff_coeffs;
-}
+    /*
+    Calculate the Jerk Minimizing Trajectory that connects the initial state
+    to the final state in time T.
 
-double value(vector<double> coeffs, double time)
-{
-  double eval = 0;
-  for (int i = 0; i < coeffs.size(); i++)
+    INPUTS
+    start - the vehicles start location given as a length three array
+        corresponding to initial values of [s, s_dot, s_double_dot]
+    end   - the desired end state for vehicle. Like "start" this is a
+        length three array.
+    T     - The duration, in seconds, over which this maneuver should occur.
+
+    OUTPUT
+    an array of length 6, each value corresponding to a coefficent in the polynomial
+    s(t) = a_0 + a_1 * t + a_2 * t**2 + a_3 * t**3 + a_4 * t**4 + a_5 * t**5
+    */
+
+    Eigen::MatrixXd a(3, 3);
+    double T2 = T * T,
+           T3 = T2 * T,
+           T4 = T3 * T,
+           T5 = T4 * T;
+    a << T3, T4, T5,
+        3 * T2, 4 * T3, 5 * T4,
+        6 * T, 12 * T2, 20 * T3;
+    Eigen::MatrixXd aInv = a.inverse();
+
+    Eigen::VectorXd b(3);
+    b << end[0] - (start[0] + start[1] * T + 0.5 * start[2] * T2),
+        end[1] - (start[1] + start[2] * T),
+        end[2] - (start[2]);
+    Eigen::VectorXd alpha = aInv * b;
+
+    std::vector<double> output = {start[0], start[1], 0.5 * start[2], alpha[0], alpha[1], alpha[2]};
+    return output;
+  }
+
+  std::vector<double> leadingCarInfo(int target_lane,
+                                     std::map<int, std::vector<std::vector<double>>> predictions,
+                                     double duration,
+                                     double s)
   {
-    eval += coeffs[i] * pow(time, i);
+    // returns s and s_dot for the nearest (ahead) vehicle in target lane
+    // this assumes the dummy vehicle will keep its lane and velocity, it will return the end position
+    // and velocity (based on difference between last two positions)
+    double nearest_leading_vehicle_speed = 0, nearest_leading_vehicle_distance = 99999;
+    for (auto prediction : predictions)
+    {
+      vector<vector<double>> pred_traj = prediction.second;
+      int pred_lane = pred_traj[0][1] / 4;
+      if (pred_lane == target_lane)
+      {
+        double start_s = pred_traj[0][0];
+        double predicted_end_s = pred_traj[pred_traj.size() - 1][0];
+        double next_to_last_s = pred_traj[pred_traj.size() - 2][0];
+        double dt = duration / Planner::kNumSamples;
+        double predicted_s_dot = (predicted_end_s - next_to_last_s) / dt;
+        if (predicted_end_s < nearest_leading_vehicle_distance && start_s > s)
+        {
+          nearest_leading_vehicle_distance = predicted_end_s;
+          nearest_leading_vehicle_speed = predicted_s_dot;
+        }
+      }
+    }
+    return {nearest_leading_vehicle_distance, nearest_leading_vehicle_speed};
   }
-  return eval;
-}
+} // namespace TrajectoryHelper
 
-namespace CostCalculatorHelper
+namespace CostHelper
 {
   double logistic(double x)
   {
     return 2.0 / (1 + exp(-x)) - 1.0;
   }
 
-  double nearest_approach(vector<double> s_traj, vector<double> d_traj, vector<vector<double>> prediction)
+  double distanceToCar(vector<double> s_traj, vector<double> d_traj, vector<vector<double>> prediction)
   {
     double closest = std::numeric_limits<double>::max();
-    for (int i = 0; i < N_SAMPLES; i++)
+    for (int i = 0; i < Planner::kNumSamples; i++)
     {
       double current_dist = sqrt(pow(s_traj[i] - prediction[i][0], 2) + pow(d_traj[i] - prediction[i][1], 2));
       if (current_dist < closest)
@@ -215,13 +266,13 @@ namespace CostCalculatorHelper
     return closest;
   }
 
-  double nearest_approach_to_any_vehicle(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
+  double closestDistanceToCar(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
     double closest = std::numeric_limits<double>::max();
     for (auto prediction : predictions)
     {
-      double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
+      double current_dist = distanceToCar(s_traj, d_traj, prediction.second);
       if (current_dist < closest)
       {
         closest = current_dist;
@@ -230,7 +281,7 @@ namespace CostCalculatorHelper
     return closest;
   }
 
-  double nearest_approach_to_any_vehicle_in_lane(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
+  double distanceToCarInEgoLane(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
     double closest = std::numeric_limits<double>::max();
@@ -243,7 +294,7 @@ namespace CostCalculatorHelper
       int pred_lane = pred_final_d / 4;
       if (my_lane == pred_lane)
       {
-        double current_dist = nearest_approach(s_traj, d_traj, prediction.second);
+        double current_dist = distanceToCar(s_traj, d_traj, prediction.second);
         if (current_dist < closest && current_dist < 120)
         {
           closest = current_dist;
@@ -253,7 +304,7 @@ namespace CostCalculatorHelper
     return closest;
   }
 
-  vector<double> velocities_for_trajectory(vector<double> traj)
+  vector<double> velocitiesTrajectory(vector<double> traj)
   {
     // given a trajectory (a vector of positions), return the average velocity between each pair as a vector
     // also can be used to find accelerations from velocities, jerks from accelerations, etc.
@@ -261,55 +312,45 @@ namespace CostCalculatorHelper
     vector<double> velocities;
     for (int i = 1; i < traj.size(); i++)
     {
-      velocities.push_back((traj[i] - traj[i - 1]) / DT);
+      velocities.push_back((traj[i] - traj[i - 1]) / Planner::kSampleDt);
     }
     return velocities;
   }
 
-  double collision_cost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
+  bool checkCollision(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Binary cost function which penalizes collisions.
-    double nearest = nearest_approach_to_any_vehicle(s_traj, d_traj, predictions);
-    if (nearest < 2 * VEHICLE_RADIUS)
+    double distnace = closestDistanceToCar(s_traj, d_traj, predictions);
+    if (distnace < Planner::kCollisionBuffer)
     {
-      return 1;
+      return true;
     }
-    else
-    {
-      return 0;
-    }
+    return false;
   }
 
-  double buffer_cost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
+  double leadingCarCost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Penalizes getting close to other vehicles.
-    double nearest = nearest_approach_to_any_vehicle(s_traj, d_traj, predictions);
-    return logistic(2 * VEHICLE_RADIUS / nearest);
+    double distnace = distanceToCarInEgoLane(s_traj, d_traj, predictions);
+    return logistic(Planner::kCollisionBuffer / distnace);
   }
 
-  double in_lane_buffer_cost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
-  {
-    // Penalizes getting close to other vehicles.
-    double nearest = nearest_approach_to_any_vehicle_in_lane(s_traj, d_traj, predictions);
-    return logistic(2 * VEHICLE_RADIUS / nearest);
-  }
-
-  double efficiency_cost(vector<double> s_traj)
+  double efficiencyCost(vector<double> s_traj)
   {
     // Rewards high average speeds.
-    vector<double> s_dot_traj = velocities_for_trajectory(s_traj);
+    vector<double> s_dot_traj = velocitiesTrajectory(s_traj);
     double final_s_dot, total = 0;
 
     final_s_dot = s_dot_traj[s_dot_traj.size() - 1];
-    return logistic((SPEED_LIMIT - final_s_dot) / SPEED_LIMIT);
+    return logistic((Road::kSpeedLimit - final_s_dot) / Road::kSpeedLimit);
   }
 
-  double not_middle_lane_cost(vector<double> d_traj)
+  double noneMiddleLaneCost(vector<double> d_traj)
   {
-    // penalize not shooting for middle lane (d = 6)
+    // penalize for deviating from middle lane (d = 6)
     double end_d = d_traj[d_traj.size() - 1];
     return logistic(pow(end_d - 6, 2));
   }
 
-} // namespace CostCalculatorHelper
+} // namespace CostHelper
 #endif // HELPERS_H

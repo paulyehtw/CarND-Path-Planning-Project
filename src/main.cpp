@@ -123,23 +123,26 @@ int main()
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
+          // Fill previous_path as input to planner
           Waypoints previous_path = Waypoints(previous_path_x,
                                               previous_path_y);
 
+          // Fill map_waypoints as input to planner
           Waypoints map_waypoints = Waypoints(map_waypoints_x,
                                               map_waypoints_y,
                                               map_waypoints_s,
                                               map_waypoints_dx,
                                               map_waypoints_dy);
 
-          planner->Initialize(car_x, car_y, car_s, car_d, car_speed, car_yaw);
-
+          // Fill sensor fusion result as input to planner
           planner->sensor_detections.clear();
           for (auto sf : sensor_fusion)
           {
             Detection detection = Detection(sf[0], sf[1], sf[2], sf[3], sf[4], sf[5], sf[6]);
             planner->sensor_detections.push_back(detection);
           }
+
+          planner->Initialize(car_x, car_y, car_s, car_d, car_speed, car_yaw);
 
           planner->planPath(map_waypoints, previous_path, next_x_vals, next_y_vals);
 
