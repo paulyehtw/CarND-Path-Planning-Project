@@ -19,18 +19,25 @@ Waypoints PathPlanner::detectClosestWaypoints(const Car &ego_car_state,
     for (int i = -PlannerParameter::kNumWaypointsBehind; i < PlannerParameter::kNumWaypointsAhead; i++)
     {
         int idx = (next_waypoint_index + i) % num_waypoints;
-        // Out of bound check
         if (idx < 0)
         {
-            continue;
+            // correct for wrap
+            idx += num_waypoints;
         }
-        else if (idx > (num_waypoints - 1))
+        // correct for wrap in s for spline interpolation (must be continuous)
+        double current_s = map.s[idx];
+        double base_s = map.s[next_waypoint_index];
+        if (i < 0 && current_s > base_s)
         {
-            continue;
+            current_s -= TRACK_LENGTH;
+        }
+        if (i > 0 && current_s < base_s)
+        {
+            current_s += TRACK_LENGTH;
         }
         closest_waypoints.x.push_back(map.x[idx]);
         closest_waypoints.y.push_back(map.y[idx]);
-        closest_waypoints.s.push_back(map.s[idx]);
+        closest_waypoints.s.push_back(current_s);
         closest_waypoints.dx.push_back(map.dx[idx]);
         closest_waypoints.dy.push_back(map.dy[idx]);
     }
@@ -69,7 +76,7 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
     double pos_x, pos_y, pos_x2, pos_y2, angle, vel_x1, vel_y1,
         pos_x3, pos_y3, vel_x2, vel_y2, acc_x, acc_y;
 
-    int subpath_size = std::min((int)PlannerParameter::kNumKeptPreviousPath, (int)previous_path.x.size());
+    subpath_size = std::min((int)PlannerParameter::kNumKeptPreviousPath, (int)previous_path.x.size());
     double traj_start_time = subpath_size * PlannerParameter::dt;
 
     // use default values if not enough previous path points
@@ -93,7 +100,7 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
         pos_x2 = previous_path.x[subpath_size - 2];
         pos_y2 = previous_path.y[subpath_size - 2];
         angle = atan2(pos_y - pos_y2, pos_x - pos_x2);
-        vector<double> frenet = getFrenet(pos_x, pos_y, angle, interpolated_waypoints.x, interpolated_waypoints.y);
+        vector<double> frenet = getFrenet(pos_x, pos_y, angle, interpolated_waypoints.x, interpolated_waypoints.y, interpolated_waypoints.s);
         pos_s = frenet[0];
         pos_d = frenet[1];
 
@@ -136,12 +143,12 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
         vector<double> s_ddot_coeffs = differentiate(s_dot_coeffs);
         vector<double> d_ddot_coeffs = differentiate(d_dot_coeffs);
         eval_time = (PlannerParameter::kNumPathPoints - subpath_size) * PlannerParameter::dt;
-        pos_s2 = function(s_traj_coeffs, eval_time);
-        pos_d2 = function(d_traj_coeffs, eval_time);
-        s_dot2 = function(s_dot_coeffs, eval_time);
-        d_dot2 = function(d_dot_coeffs, eval_time);
-        s_ddot2 = function(s_ddot_coeffs, eval_time);
-        d_ddot2 = function(d_ddot_coeffs, eval_time);
+        pos_s2 = value(s_traj_coeffs, eval_time);
+        pos_d2 = value(d_traj_coeffs, eval_time);
+        s_dot2 = value(s_dot_coeffs, eval_time);
+        d_dot2 = value(d_dot_coeffs, eval_time);
+        s_ddot2 = value(s_ddot_coeffs, eval_time);
+        d_ddot2 = value(d_ddot_coeffs, eval_time);
     }
 
     x = pos_x;
@@ -153,15 +160,13 @@ int PathPlanner::updateCoefficients(Car &ego_car_state,
     d = pos_d;     // d position
     d_d = d_dot;   // d dot - velocity in d
     d_dd = d_ddot; // d dot-dot - acceleration in d
-
-    return subpath_size;
 }
 
-void PathPlanner::detectTraffic(const std::vector<Car> &traffic, const Car &ego_car_state)
+void PathPlanner::detectTraffic(const std::vector<CarDetected> &sensor_detections, const Car &ego_car_state)
 {
     traffic_states.reset();
 
-    for (Car car : traffic)
+    for (CarDetected car : sensor_detections)
     {
         double s_diff = fabs(car.s - ego_car_state.s);
         if (s_diff < PlannerParameter::kMinLeadingDistance)
@@ -183,23 +188,35 @@ void PathPlanner::detectTraffic(const std::vector<Car> &traffic, const Car &ego_
     }
 }
 
-void PathPlanner::predictTraffic(const std::vector<Car> &traffic, const int &subpath_size)
+void PathPlanner::predictTraffic()
 {
-    double traj_start_time = subpath_size * PlannerParameter::dt;
-    double duration = PlannerParameter::kNumSamples * PlannerParameter::kSampleDt - subpath_size * PlannerParameter::dt;
-    for (int i = 0; i < traffic.size(); ++i)
+    double traj_start_time = subpath_size * PATH_DT;
+    double duration = N_SAMPLES * DT - subpath_size * PATH_DT;
+    vector<Car> other_cars;
+    // std::map<int, vector<vector<double>>> predictions;
+    traffic_predictions.clear();
+    double other_car_vel_test = 0;
+
+    for (CarDetected &car_deteceted : sensor_detections)
     {
+        double other_car_vel = sqrt(pow((double)car_deteceted.vx, 2) + pow((double)car_deteceted.vy, 2));
+        other_car_vel_test += other_car_vel;
+        Car car = Car(0.0F, 0.0F, car_deteceted.s, car_deteceted.d, other_car_vel, 0.0F);
+        other_cars.push_back(car);
+        int v_id = car_deteceted.id;
+
         std::vector<std::vector<double>> prediction{};
-        Car car = traffic[i];
-        for (int j = 0; j < PlannerParameter::kNumSamples; j++)
+        for (int i = 0; i < PlannerParameter::kNumSamples; i++)
         {
-            double t = traj_start_time + (j * duration / PlannerParameter::kNumSamples);
+            double t = traj_start_time + (i * duration / PlannerParameter::kNumSamples);
             double s_pred = car.s + car.v * t;
-            vector<double> s_and_d = {s_pred, d};
+            vector<double> s_and_d = {s_pred, car.d};
             prediction.push_back(s_and_d);
         }
-        traffic_predictions[i] = prediction;
+
+        traffic_predictions[v_id] = prediction;
     }
+    // return predictions;
 }
 
 void PathPlanner::updateStates()
@@ -215,7 +232,7 @@ void PathPlanner::updateStates()
     }
 }
 
-std::vector<double> get_traj_coeffs(std::vector<double> start, std::vector<double> end, double T)
+std::vector<double> getTrajCoeffs(std::vector<double> start, std::vector<double> end, double T)
 {
     /*
     Calculate the Jerk Minimizing Trajectory that connects the initial state
@@ -264,8 +281,8 @@ std::vector<std::vector<double>> PathPlanner::calculateTrajectory(std::vector<st
     vector<double> current_d = {this->d, this->d_d, this->d_dd};
 
     // determine coefficients of optimal JMT
-    this->s_traj_coeffs = get_traj_coeffs(current_s, target_s, duration);
-    this->d_traj_coeffs = get_traj_coeffs(current_d, target_d, duration);
+    this->s_traj_coeffs = getTrajCoeffs(current_s, target_s, duration);
+    this->d_traj_coeffs = getTrajCoeffs(current_d, target_d, duration);
 
     // // DEBUG
     // cout << "s coeffs: ";
@@ -400,26 +417,25 @@ double PathPlanner::calculateCost(std::vector<double> s_traj,
                                   std::vector<double> d_traj,
                                   std::map<int, std::vector<std::vector<double>>> predictions)
 {
-
     double total_cost = 0;
-    double col = CostCalculatorHelper::collisionCost(s_traj, d_traj, predictions) * COLLISION_COST_WEIGHT;
-    double buf = CostCalculatorHelper::bufferCost(s_traj, d_traj, predictions) * BUFFER_COST_WEIGHT;
-    double ilb = CostCalculatorHelper::inLaneBufferCost(s_traj, d_traj, predictions) * IN_LANE_BUFFER_COST_WEIGHT;
-    double eff = CostCalculatorHelper::efficiencyCost(s_traj) * EFFICIENCY_COST_WEIGHT;
-    double nml = CostCalculatorHelper::notMiddleLaneCost(d_traj) * NOT_MIDDLE_LANE_COST_WEIGHT;
+    double col = CostCalculatorHelper::collision_cost(s_traj, d_traj, predictions) * COLLISION_COST_WEIGHT;
+    double buf = CostCalculatorHelper::buffer_cost(s_traj, d_traj, predictions) * BUFFER_COST_WEIGHT;
+    double ilb = CostCalculatorHelper::in_lane_buffer_cost(s_traj, d_traj, predictions) * IN_LANE_BUFFER_COST_WEIGHT;
+    double eff = CostCalculatorHelper::efficiency_cost(s_traj) * EFFICIENCY_COST_WEIGHT;
+    double nml = CostCalculatorHelper::not_middle_lane_cost(d_traj) * NOT_MIDDLE_LANE_COST_WEIGHT;
 
     total_cost += col + buf + ilb + eff + nml; // + esl + mas + aas + mad + aad + mjs + ajs + mjd + ajd;
 
     return total_cost;
 }
 
-vector<vector<double>> PathPlanner::generateTarget(const std::vector<Car> &traffic, const Car &ego_car_state, const int &subpath_size)
+vector<vector<double>> PathPlanner::generateTarget()
 {
     vector<vector<double>> best_target;
-    double best_cost = std::numeric_limits<double>::max();
+    double best_cost = 999999;
     std::string best_traj_state = "";
-    double duration = PlannerParameter::kNumSamples * PlannerParameter::kSampleDt - subpath_size * PlannerParameter::dt;
-    detectTraffic(traffic, ego_car_state);
+    // double duration = PlannerParameter::kNumSamples * PlannerParameter::kSampleDt - subpath_size * PlannerParameter::dt;
+    double duration = N_SAMPLES * DT - subpath_size * PATH_DT;
     for (std::string state : available_states)
     {
         vector<vector<double>> target_s_and_d = calculateTarget(state,
@@ -430,7 +446,6 @@ vector<vector<double>> PathPlanner::generateTarget(const std::vector<Car> &traff
         vector<vector<double>> possible_traj = calculateTrajectory(target_s_and_d, duration);
 
         double current_cost = calculateCost(possible_traj[0], possible_traj[1], traffic_predictions);
-
         if (current_cost < best_cost)
         {
             best_cost = current_cost;
@@ -438,13 +453,13 @@ vector<vector<double>> PathPlanner::generateTarget(const std::vector<Car> &traff
             best_target = target_s_and_d;
         }
     }
+
     return best_target;
 }
 
 void PathPlanner::generateNewPath(const vector<vector<double>> &target,
                                   const Waypoints &interpolated_waypoints,
                                   const Waypoints &previous_path,
-                                  const int &subpath_size,
                                   vector<double> &next_x_vals,
                                   vector<double> &next_y_vals)
 {

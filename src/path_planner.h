@@ -11,6 +11,13 @@
 
 using std::vector;
 
+#define PATH_DT 0.02 // seconds
+
+#define N_SAMPLES 20
+#define DT 0.20 // seconds
+
+#define TRACK_LENGTH 6945.554 // meters
+
 #define VEHICLE_RADIUS 1.25 // meters
 #define SPEED_LIMIT 21.5    // m/s
 #define VELOCITY_INCREMENT_LIMIT 0.125
@@ -71,6 +78,7 @@ struct TrafficStates
 
 class PathPlanner
 {
+
     // Cartesian coordinates
     double x;
     double y;
@@ -83,14 +91,17 @@ class PathPlanner
     double d;
     double d_d;
     double d_dd;
+
+    int subpath_size;
     vector<double> s_traj_coeffs;
     vector<double> d_traj_coeffs;
-
     vector<std::string> available_states;
+
     TrafficStates traffic_states;
     std::map<int, vector<vector<double>>> traffic_predictions;
 
 public:
+    vector<CarDetected> sensor_detections;
     Waypoints detectClosestWaypoints(const Car &ego_car_state,
                                      const Waypoints &map);
     Waypoints interpolateWaypoints(const Waypoints &waypoints);
@@ -99,12 +110,13 @@ public:
                            const Waypoints &interpolated_waypoints,
                            const Waypoints &previous_path);
 
-    void detectTraffic(const vector<Car> &traffic, const Car &ego_car_state);
+    void detectTraffic(const std::vector<CarDetected> &sensor_detections, const Car &ego_car_state);
 
-    void predictTraffic(const vector<Car> &traffic, const int &subpath_size);
+    void predictTraffic();
 
     void updateStates();
 
+    // move to helper
     vector<double> get_leading_vehicle_data_for_lane(int target_lane,
                                                      std::map<int, vector<vector<double>>> predictions,
                                                      double duration);
@@ -120,17 +132,16 @@ public:
                                            double duration,
                                            bool car_just_ahead);
 
-    vector<vector<double>> generateTarget(const vector<Car> &traffic, const Car &ego_car_state, const int &subpath_size);
+    vector<vector<double>> generateTarget();
 
     void generateNewPath(const vector<vector<double>> &target,
                          const Waypoints &interpolated_waypoints,
                          const Waypoints &previous_path,
-                         const int &subpath_size,
                          vector<double> &next_x_vals,
                          vector<double> &next_y_vals);
 
     PathPlanner(){};
-    ~PathPlanner();
+    ~PathPlanner(){};
 };
 
 #endif // PATH_PLANNER_H

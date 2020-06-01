@@ -8,6 +8,7 @@
 #include <vector>
 
 // for convenience
+using std::map;
 using std::string;
 using std::vector;
 
@@ -76,51 +77,40 @@ int NextWaypoint(double x, double y, double theta, const vector<double> &maps_x,
 }
 
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta,
-                         const vector<double> &maps_x,
-                         const vector<double> &maps_y)
+vector<double> getFrenet(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y, vector<double> maps_s)
 {
   int next_wp = NextWaypoint(x, y, theta, maps_x, maps_y);
-
   int prev_wp;
   prev_wp = next_wp - 1;
   if (next_wp == 0)
   {
     prev_wp = maps_x.size() - 1;
   }
-
   double n_x = maps_x[next_wp] - maps_x[prev_wp];
   double n_y = maps_y[next_wp] - maps_y[prev_wp];
   double x_x = x - maps_x[prev_wp];
   double x_y = y - maps_y[prev_wp];
-
   // find the projection of x onto n
   double proj_norm = (x_x * n_x + x_y * n_y) / (n_x * n_x + n_y * n_y);
   double proj_x = proj_norm * n_x;
   double proj_y = proj_norm * n_y;
-
   double frenet_d = distance(x_x, x_y, proj_x, proj_y);
-
   //see if d value is positive or negative by comparing it to a center point
   double center_x = 1000 - maps_x[prev_wp];
   double center_y = 2000 - maps_y[prev_wp];
   double centerToPos = distance(center_x, center_y, x_x, x_y);
   double centerToRef = distance(center_x, center_y, proj_x, proj_y);
-
   if (centerToPos <= centerToRef)
   {
     frenet_d *= -1;
   }
-
   // calculate s value
-  double frenet_s = 0;
-  for (int i = 0; i < prev_wp; ++i)
+  double frenet_s = maps_s[0];
+  for (int i = 0; i < prev_wp; i++)
   {
     frenet_s += distance(maps_x[i], maps_y[i], maps_x[i + 1], maps_y[i + 1]);
   }
-
   frenet_s += distance(0, 0, proj_x, proj_y);
-
   return {frenet_s, frenet_d};
 }
 
@@ -196,7 +186,7 @@ vector<double> differentiate(vector<double> coeffs)
   return diff_coeffs;
 }
 
-double function(vector<double> coeffs, double time)
+double value(vector<double> coeffs, double time)
 {
   double eval = 0;
   for (int i = 0; i < coeffs.size(); i++)
@@ -218,7 +208,7 @@ namespace CostCalculatorHelper
   double nearest_approach(vector<double> s_traj, vector<double> d_traj, vector<vector<double>> prediction)
   {
     double closest = 999999;
-    for (int i = 0; i < PlannerParameter::kNumSamples; i++)
+    for (int i = 0; i < N_SAMPLES; i++)
     {
       double current_dist = sqrt(pow(s_traj[i] - prediction[i][0], 2) + pow(d_traj[i] - prediction[i][1], 2));
       if (current_dist < closest)
@@ -229,7 +219,7 @@ namespace CostCalculatorHelper
     return closest;
   }
 
-  double nearest_approach_to_any_vehicle(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  double nearest_approach_to_any_vehicle(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
     double closest = 999999;
@@ -244,7 +234,7 @@ namespace CostCalculatorHelper
     return closest;
   }
 
-  double nearest_approach_to_any_vehicle_in_lane(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  double nearest_approach_to_any_vehicle_in_lane(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Determines the nearest the vehicle comes to any other vehicle throughout a trajectory
     double closest = 999999;
@@ -275,12 +265,12 @@ namespace CostCalculatorHelper
     vector<double> velocities;
     for (int i = 1; i < traj.size(); i++)
     {
-      velocities.push_back((traj[i] - traj[i - 1]) / PlannerParameter::kSampleDt);
+      velocities.push_back((traj[i] - traj[i - 1]) / DT);
     }
     return velocities;
   }
 
-  double collisionCost(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  double collision_cost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Binary cost function which penalizes collisions.
     double nearest = nearest_approach_to_any_vehicle(s_traj, d_traj, predictions);
@@ -294,23 +284,23 @@ namespace CostCalculatorHelper
     }
   }
 
-  double bufferCost(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  double buffer_cost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
     // Penalizes getting close to other vehicles.
     double nearest = nearest_approach_to_any_vehicle(s_traj, d_traj, predictions);
     return logistic(2 * VEHICLE_RADIUS / nearest);
   }
 
-  double inLaneBufferCost(vector<double> s_traj, vector<double> d_traj, std::map<int, vector<vector<double>>> predictions)
+  double in_lane_buffer_cost(vector<double> s_traj, vector<double> d_traj, map<int, vector<vector<double>>> predictions)
   {
-    // // Penalizes getting close to other vehicles.
+    // Penalizes getting close to other vehicles.
     double nearest = nearest_approach_to_any_vehicle_in_lane(s_traj, d_traj, predictions);
     return logistic(2 * VEHICLE_RADIUS / nearest);
   }
 
-  double efficiencyCost(vector<double> s_traj)
+  double efficiency_cost(vector<double> s_traj)
   {
-    // // Rewards high average speeds.
+    // Rewards high average speeds.
     vector<double> s_dot_traj = velocities_for_trajectory(s_traj);
     double final_s_dot, total = 0;
 
@@ -318,7 +308,7 @@ namespace CostCalculatorHelper
     return logistic((SPEED_LIMIT - final_s_dot) / SPEED_LIMIT);
   }
 
-  double notMiddleLaneCost(vector<double> d_traj)
+  double not_middle_lane_cost(vector<double> d_traj)
   {
     // penalize not shooting for middle lane (d = 6)
     double end_d = d_traj[d_traj.size() - 1];
