@@ -140,6 +140,303 @@ that's just a guess.
 One last note here: regardless of the IDE used, every submitted project must
 still be compilable with cmake and make./
 
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+# Writeup for submission
 
+<p align="center">
+  <img  src="demo_images/path_planning.gif">
+</p>
+
+---
+
+## Path Planning Workflow
+1. Check the closest waypoints
+2. Interpolate waypoints
+3. Check surrounding
+4. Predict traffic
+5. Update behaviours
+6. Generate desired target
+7. Generate new path
+
+---
+
+### Check the closest waypoints
+```
+Waypoints PathPlanner::detectClosestWaypoints(const Waypoints &map)
+{
+    int num_waypoints = map.x.size();
+    int next_waypoint_index = nextWaypoint(x, y, yaw, map.x, map.y);
+
+    Waypoints closest_waypoints = Waypoints();
+
+    // Add closest waypoints information
+    for (int i = -Planner::kNumWaypointsBehind; i < Planner::kNumWaypointsAhead; i++)
+    {
+        int idx = (next_waypoint_index + i) % num_waypoints;
+        if (idx < 0)
+        {
+            // correct for wrap
+            idx += num_waypoints;
+        }
+        // correct for wrap in s for spline interpolation (must be continuous)
+        double current_s = map.s[idx];
+        double base_s = map.s[next_waypoint_index];
+        if (i < 0 && current_s > base_s)
+        {
+            current_s -= Road::kTrackLength;
+        }
+        if (i > 0 && current_s < base_s)
+        {
+            current_s += Road::kTrackLength;
+        }
+        closest_waypoints.x.push_back(map.x[idx]);
+        closest_waypoints.y.push_back(map.y[idx]);
+        closest_waypoints.s.push_back(current_s);
+        closest_waypoints.dx.push_back(map.dx[idx]);
+        closest_waypoints.dy.push_back(map.dy[idx]);
+    }
+    return closest_waypoints;
+}
+```
+
+---
+
+### Interpolate waypoints
+```
+Waypoints PathPlanner::interpolateWaypoints(const Waypoints &waypoints)
+{
+    Waypoints interpolated_waypoints{};
+    float interval = Planner::kInterpolatedWaypointsInterval;
+    double s_length = (waypoints.s[waypoints.s.size() - 1] - waypoints.s[0]); // use s to calcualte interpolation points
+    int num_interpolation_points = s_length / interval;
+
+    // Interpolate s
+    interpolated_waypoints.s.push_back(waypoints.s[0]);
+    for (int i = 1; i < num_interpolation_points; i++)
+    {
+        interpolated_waypoints.s.push_back(waypoints.s[0] + i * interval);
+    }
+    // Interpolate  the rest
+    interpolated_waypoints.x = interpolate(waypoints.s, waypoints.x, interval, num_interpolation_points);
+    interpolated_waypoints.y = interpolate(waypoints.s, waypoints.y, interval, num_interpolation_points);
+    interpolated_waypoints.dx = interpolate(waypoints.s, waypoints.dx, interval, num_interpolation_points);
+    interpolated_waypoints.dy = interpolate(waypoints.s, waypoints.dy, interval, num_interpolation_points);
+
+    return interpolated_waypoints;
+}
+```
+
+---
+
+### Check surrounding
+```
+void PathPlanner::checkSurrounding()
+{
+    surrouding.reset();
+
+    for (Detection &car : sensor_detections)
+    {
+        double s_diff = fabs(car.s - s);
+        if (s_diff < Planner::kSaveDistance)
+        {
+            double d_diff = car.d - d;
+            if (d_diff > 0.0F && fabs(d_diff) < 1.5 * Road::kWidth)
+            {
+                surrouding.car_on_right = true;
+            }
+            else if (d_diff < 0.0F && fabs(d_diff) < 1.5 * Road::kWidth)
+            {
+                surrouding.car_on_left = true;
+            }
+            else if (fabs(d_diff) < 0.5 * Road::kWidth)
+            {
+                surrouding.car_ahead = true;
+            }
+        }
+    }
+}
+```
+
+---
+
+### Predict traffic
+```
+void PathPlanner::predictTraffic()
+{
+    double traj_start_time = subpath_size * Planner::dt;
+    double duration = Planner::kNumSamples * Planner::kSampleDt - subpath_size * Planner::dt;
+    predictions.clear();
+    for (Detection &car_deteceted : sensor_detections)
+    {
+        double other_car_vel = sqrt(pow((double)car_deteceted.vx, 2) + pow((double)car_deteceted.vy, 2));
+        int v_id = car_deteceted.id;
+
+        std::vector<std::vector<double>> prediction{};
+        for (int i = 0; i < Planner::kNumSamples; i++)
+        {
+            double t = traj_start_time + (i * duration / Planner::kNumSamples);
+            double s_pred = car_deteceted.s + other_car_vel * t;
+            vector<double> s_and_d = {s_pred, car_deteceted.d};
+            prediction.push_back(s_and_d);
+        }
+
+        predictions[v_id] = prediction;
+    }
+}
+```
+
+---
+
+### Update behaviours
+```
+void PathPlanner::updateBehaviourList()
+{
+    behaviour_list = {"KeepLane"};
+    if (d > 4 && !surrouding.car_on_left)
+    {
+        behaviour_list.push_back("ChangeLeft");
+    }
+    if (d < 8 && !surrouding.car_on_right)
+    {
+        behaviour_list.push_back("ChangeRight");
+    }
+}
+```
+
+---
+
+### Generate desired target
+```
+vector<vector<double>> PathPlanner::bestTarget()
+{
+    vector<vector<double>> best_target;
+    double best_cost = std::numeric_limits<double>::max();
+    double duration = Planner::kNumSamples * Planner::kSampleDt - subpath_size * Planner::dt;
+    for (std::string behaviour : behaviour_list)
+    {
+        vector<vector<double>> target_s_and_d = calculateTarget(behaviour,
+                                                                predictions,
+                                                                duration);
+
+        vector<vector<double>> possible_traj = calculateTrajectory(target_s_and_d, duration);
+
+        double current_cost = calculateCost(possible_traj[0], possible_traj[1], predictions);
+        if (current_cost < best_cost)
+        {
+            best_cost = current_cost;
+            best_target = target_s_and_d;
+        }
+    }
+
+    return best_target;
+}
+```
+
+---
+
+### Generate new path
+```
+void PathPlanner::generateNewPath(const vector<vector<double>> &target,
+                                  const Waypoints &interpolated_waypoints,
+                                  const Waypoints &previous_path,
+                                  vector<double> &next_x_vals,
+                                  vector<double> &next_y_vals)
+{
+    vector<double> coarse_s_traj, coarse_x_traj, coarse_y_traj, interpolated_s_traj,
+        interpolated_x_traj, interpolated_y_traj;
+
+    double prev_s = s - s_d * Planner::dt;
+
+    // first two points of coarse trajectory, to ensure spline begins smoothly
+    if (subpath_size >= 2)
+    {
+        coarse_s_traj.push_back(prev_s);
+        coarse_x_traj.push_back(previous_path.x[subpath_size - 2]);
+        coarse_y_traj.push_back(previous_path.y[subpath_size - 2]);
+        coarse_s_traj.push_back(s);
+        coarse_x_traj.push_back(previous_path.x[subpath_size - 1]);
+        coarse_y_traj.push_back(previous_path.y[subpath_size - 1]);
+    }
+    else
+    {
+        double prev_s = s - 1;
+        double prev_x = x - cos(yaw);
+        double prev_y = y - sin(yaw);
+        coarse_s_traj.push_back(prev_s);
+        coarse_x_traj.push_back(prev_x);
+        coarse_y_traj.push_back(prev_y);
+        coarse_s_traj.push_back(s);
+        coarse_x_traj.push_back(x);
+        coarse_y_traj.push_back(y);
+    }
+
+    // last two points of coarse trajectory, use target_d and current s + 30,60
+    double target_s1 = s + Road::kIntervalS;
+    double target_d1 = target[1][0];
+    vector<double> target_xy1 = getXY(target_s1, target_d1,
+                                      interpolated_waypoints.s,
+                                      interpolated_waypoints.x,
+                                      interpolated_waypoints.y);
+    double target_x1 = target_xy1[0];
+    double target_y1 = target_xy1[1];
+    coarse_s_traj.push_back(target_s1);
+    coarse_x_traj.push_back(target_x1);
+    coarse_y_traj.push_back(target_y1);
+    double target_s2 = target_s1 + Road::kIntervalS;
+    double target_d2 = target_d1;
+    vector<double> target_xy2 = getXY(target_s2,
+                                      target_d2,
+                                      interpolated_waypoints.s,
+                                      interpolated_waypoints.x,
+                                      interpolated_waypoints.y);
+    double target_x2 = target_xy2[0];
+    double target_y2 = target_xy2[1];
+    coarse_s_traj.push_back(target_s2);
+    coarse_x_traj.push_back(target_x2);
+    coarse_y_traj.push_back(target_y2);
+
+    // next s values
+    double target_s_dot = target[0][1];
+    double current_s = s;
+    double current_v = s_d;
+    for (int i = 0; i < (Planner::kNumPathPoints - subpath_size); i++)
+    {
+        double v_incr, a_incr;
+        if (fabs(target_s_dot - current_v) < 2 * Cost::kVelocityIncrementLimit)
+        {
+            v_incr = 0;
+        }
+        else
+        {
+            v_incr = (target_s_dot - current_v) / (fabs(target_s_dot - current_v)) * Cost::kVelocityIncrementLimit;
+        }
+        current_v += v_incr;
+        current_s += current_v * Planner::dt;
+        interpolated_s_traj.push_back(current_s);
+    }
+
+    interpolated_x_traj = interpolate(coarse_s_traj, coarse_x_traj, interpolated_s_traj);
+    interpolated_y_traj = interpolate(coarse_s_traj, coarse_y_traj, interpolated_s_traj);
+
+    // add previous path, if any, to next path
+    for (int i = 0; i < subpath_size; i++)
+    {
+        next_x_vals.push_back(previous_path.x[i]);
+        next_y_vals.push_back(previous_path.y[i]);
+    }
+    // add xy points from newly generated path
+    for (int i = 0; i < interpolated_x_traj.size(); i++)
+    {
+        next_x_vals.push_back(interpolated_x_traj[i]);
+        next_y_vals.push_back(interpolated_y_traj[i]);
+    }
+}
+```
+
+---
+
+### Result
+<p align="center">
+  <img  src="demo_images/path_planning.png">
+</p>
+
+Driven distance without accident : **8.55 miles**
