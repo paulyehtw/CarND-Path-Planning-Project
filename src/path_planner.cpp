@@ -151,11 +151,11 @@ void PathPlanner::updateEgoCarState(const Waypoints &interpolated_waypoints,
     d_dd = d_ddot;
 }
 
-void PathPlanner::checkSurrounding(const std::vector<Detection> &sensor_detections)
+void PathPlanner::checkSurrounding()
 {
-    traffic_states.reset();
+    surrouding.reset();
 
-    for (Detection car : sensor_detections)
+    for (Detection &car : sensor_detections)
     {
         double s_diff = fabs(car.s - s);
         if (s_diff < Planner::kSaveDistance)
@@ -163,15 +163,15 @@ void PathPlanner::checkSurrounding(const std::vector<Detection> &sensor_detectio
             double d_diff = car.d - d;
             if (d_diff > 0.0F && fabs(d_diff) < 1.5 * Road::kWidth)
             {
-                traffic_states.car_on_right = true;
+                surrouding.car_on_right = true;
             }
             else if (d_diff < 0.0F && fabs(d_diff) < 1.5 * Road::kWidth)
             {
-                traffic_states.car_on_left = true;
+                surrouding.car_on_left = true;
             }
             else if (fabs(d_diff) < 0.5 * Road::kWidth)
             {
-                traffic_states.car_ahead = true;
+                surrouding.car_ahead = true;
             }
         }
     }
@@ -181,7 +181,7 @@ void PathPlanner::predictTraffic()
 {
     double traj_start_time = subpath_size * Planner::dt;
     double duration = Planner::kNumSamples * Planner::kSampleDt - subpath_size * Planner::dt;
-    traffic_predictions.clear();
+    predictions.clear();
     for (Detection &car_deteceted : sensor_detections)
     {
         double other_car_vel = sqrt(pow((double)car_deteceted.vx, 2) + pow((double)car_deteceted.vy, 2));
@@ -196,18 +196,18 @@ void PathPlanner::predictTraffic()
             prediction.push_back(s_and_d);
         }
 
-        traffic_predictions[v_id] = prediction;
+        predictions[v_id] = prediction;
     }
 }
 
 void PathPlanner::updateBehaviourList()
 {
     behaviour_list = {"KeepLane"};
-    if (d > 4 && !traffic_states.car_on_left)
+    if (d > 4 && !surrouding.car_on_left)
     {
         behaviour_list.push_back("ChangeLeft");
     }
-    if (d < 8 && !traffic_states.car_on_right)
+    if (d < 8 && !surrouding.car_on_right)
     {
         behaviour_list.push_back("ChangeRight");
     }
@@ -215,9 +215,7 @@ void PathPlanner::updateBehaviourList()
 
 std::vector<std::vector<double>> PathPlanner::calculateTrajectory(std::vector<std::vector<double>> target, double duration)
 {
-    // takes a target {{s, s_dot, s_ddot}, {d, d_dot, d_ddot}} and returns a Jerk-Minimized Trajectory
-    // (JMT) connecting current state (s and d) to target state in a list of s points and a list of d points
-    // ex. {{s1, s2, ... , sn}, {d1, d2, ... , dn}}
+
     vector<double> target_s = target[0];
     vector<double> target_d = target[1];
     vector<double> current_s = {s, s_d, s_dd};
@@ -248,15 +246,8 @@ std::vector<std::vector<double>> PathPlanner::calculateTrajectory(std::vector<st
 
 std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string behaviour,
                                                               std::map<int, std::vector<std::vector<double>>> predictions,
-                                                              double duration,
-                                                              bool car_just_ahead)
+                                                              double duration)
 {
-    // Returns two lists s_target and d_target in a single vector - s_target includes
-    // [s, s_dot, and s_ddot] and d_target includes the same
-    // If no leading car found target lane, ego car will make up PERCENT_V_DIFF_TO_MAKE_UP of the difference
-    // between current velocity and target velocity. If leading car is found set target s to FOLLOW_DISTANCE
-    // and target s_dot to leading car's s_dot based on predictions
-
     // Desire :
     // lateral displacement : depends on behaviour
     // lateral velocity : 0
@@ -304,7 +295,7 @@ std::vector<std::vector<double>> PathPlanner::calculateTarget(std::string behavi
     }
 
     // emergency brake
-    if (car_just_ahead)
+    if (surrouding.car_ahead)
     {
         target_s_d = 0.0;
     }
@@ -324,7 +315,7 @@ double PathPlanner::calculateCost(std::vector<double> s_traj,
     return cc + lc + ec + nm;
 }
 
-vector<vector<double>> PathPlanner::generateTarget()
+vector<vector<double>> PathPlanner::bestTarget()
 {
     vector<vector<double>> best_target;
     double best_cost = std::numeric_limits<double>::max();
@@ -332,13 +323,12 @@ vector<vector<double>> PathPlanner::generateTarget()
     for (std::string behaviour : behaviour_list)
     {
         vector<vector<double>> target_s_and_d = calculateTarget(behaviour,
-                                                                traffic_predictions,
-                                                                duration,
-                                                                traffic_states.car_ahead);
+                                                                predictions,
+                                                                duration);
 
         vector<vector<double>> possible_traj = calculateTrajectory(target_s_and_d, duration);
 
-        double current_cost = calculateCost(possible_traj[0], possible_traj[1], traffic_predictions);
+        double current_cost = calculateCost(possible_traj[0], possible_traj[1], predictions);
         if (current_cost < best_cost)
         {
             best_cost = current_cost;
@@ -455,8 +445,8 @@ void PathPlanner::planPath(const Waypoints &map,
     Waypoints interpolated_waypoints = interpolateWaypoints(closest_waypoints);
     updateEgoCarState(interpolated_waypoints, previous_path);
     predictTraffic();
-    checkSurrounding(sensor_detections);
+    checkSurrounding();
     updateBehaviourList();
-    vector<vector<double>> target = generateTarget();
+    vector<vector<double>> target = bestTarget();
     generateNewPath(target, interpolated_waypoints, previous_path, next_x_vals, next_y_vals);
 }
