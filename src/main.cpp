@@ -3,11 +3,11 @@
 #include "detection.h"
 #include "json.hpp"
 #include "path_planner.h"
-#include "uWebSockets/src/uWS.h"
 #include "waypoints.h"
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <uWS/uWS.h>
 #include <vector>
 
 // for convenience
